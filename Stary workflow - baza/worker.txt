@@ -1,0 +1,1195 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aa294913-0ad7-4664-8b71-7ef3aee8192b",
+              "leftValue": "={{ $json.czujnik_duplikatu.toNumber() }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        976,
+        256
+      ],
+      "id": "f466422e-df99-4913-a966-30fd68df69d7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3757eb01-ce63-4e1a-842d-d5142a7f1c95",
+              "leftValue": "={{ JSON.parse($json.content.parts[0].text).is_duplicate }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3248,
+        336
+      ],
+      "id": "ae157650-4e93-4403-9dd3-cf03831b8a4a",
+      "name": "Is Duplicate?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "85b50ddc-312c-4870-a557-784106dcdbbc",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "AI i Automatyzacja",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "0"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e3092901-0c9a-4fbc-bcbe-9d020f663f10",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "Rolnictwo Precyzyjne",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "1"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d4bf8223-e9b3-4618-b60b-33ca7bf04365",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "Inteligentne Maszyny i Drony",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "2"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "417c95d6-5068-4d89-9e71-24143ab034ce",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "Biotechnologia i Nauka",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "3"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6efbb92e-a481-4727-b264-fab86227c2fb",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "Agroenergetyka",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "4"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ae0abe2d-170d-4a1a-875b-f083550cf094",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).category }}",
+                    "rightValue": "Biznes AgTech i Prawo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3472,
+        272
+      ],
+      "id": "91390dad-67ca-44d4-a1bc-08296725c3f3",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b4f9c69d-51c3-4918-89bd-72f9732f5668",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).is_duplicate === true || JSON.parse($json.content.parts[0].text).is_relevant === false }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "0"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "714ebe4e-4c01-4864-bce9-40c728469c3f",
+                    "leftValue": "={{ JSON.parse($json.content.parts[0].text).is_duplicate === false && JSON.parse($json.content.parts[0].text).is_relevant === true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3024,
+        272
+      ],
+      "id": "d45fa483-c783-4697-a6cd-434b2eaa7647",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\nlet rawText = inputData.content?.parts?.[0]?.text || inputData.text || \"\";\n\nif (!rawText) {\n    throw new Error(\"Brak danych tekstowych z węzła LLM.\");\n}\n\n// 1. Twarde wycięcie znaczników markdown z outputu Gemini\nrawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();\n\ntry {\n    // 2. Próba parsowania czystego tekstu\n    return JSON.parse(rawText);\n} catch (e) {\n    // 3. Siłowa izolacja w przypadku doklejonego tekstu konwersacyjnego\n    const startIndex = rawText.indexOf('{');\n    const endIndex = rawText.lastIndexOf('}');\n\n    if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {\n        const isolatedJson = rawText.substring(startIndex, endIndex + 1);\n        try {\n            return JSON.parse(isolatedJson);\n        } catch (innerError) {\n            throw new Error(\"Wyizolowano strukturę JSON, ale wewnątrz jest błąd składniowy: \" + innerError.message);\n        }\n    }\n    \n    throw new Error(\"Nie odnaleziono klamer JSON w odpowiedzi LLM.\");\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4336,
+        896
+      ],
+      "id": "2972bd03-fc35-44a0-9317-01f4c5285136",
+      "name": "Parse Synthesis JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articleData = $('Parse Synthesis JSON').item.json; \nconst tagsArray = articleData.tags; \n\nif (!tagsArray || !Array.isArray(tagsArray) || tagsArray.length === 0) {\n    return { json: { ...articleData, sql_tags_query: \"\" } };\n}\n\nfunction generateSlug(text) {\n    return text\n        .toLowerCase()\n        .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')\n        .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')\n        .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z')\n        .replace(/[^a-z0-9\\s-]/g, '')\n        .replace(/\\s+/g, '-')\n        .replace(/-+/g, '-')\n        .trim();\n}\n\n// Budujemy jedno zapytanie, które wrzuci brakujące tagi i zwróci ID wszystkich (istniejących i nowych)\nlet values = tagsArray.map(tagName => {\n    const cleanName = tagName.trim().replace(/'/g, \"''\");\n    const slug = generateSlug(cleanName);\n    return `('${cleanName}', '${slug}')`;\n}).join(', ');\n\nconst sqlQuery = `\nWITH inserted_tags AS (\n    INSERT INTO tags (name, slug) \n    VALUES ${values}\n    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name\n    RETURNING id\n)\nSELECT id FROM inserted_tags\nUNION\nSELECT id FROM tags WHERE slug IN (${tagsArray.map(t => `'${generateSlug(t.trim())}'`).join(', ')});\n`;\n\n// Wymuś pairedItem, wskazując na aktualny element w iteracji pętli\nreturn { \n    json: { ...articleData, sql_tags_query: sqlQuery },\n    pairedItem: { item: 0 } \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5440,
+        896
+      ],
+      "id": "1f2a88fc-f491-45da-9edb-67aae02910fb",
+      "name": "Hurtowe Mapowanie Tagów"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"AI i Automatyzacja\" na portalu AgTech kombain.pl. Jesteś ekspertem od algorytmów uczenia maszynowego (Machine Learning), głębokich sieci neuronowych, widzenia komputerowego (Computer Vision) oraz zaawansowanej automatyzacji procesów decyzyjnych w rolnictwie.\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu architektury sztucznej inteligencji, analizy predykcyjnej i automatyzacji systemowej, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"[WPISZ DOKŁADNĄ NAZWĘ KATEGORII]\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        -112
+      ],
+      "id": "872487ba-ec62-465b-ba63-c7a20e09ca64",
+      "name": "AI i Automatyzacja"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"Rolnictwo Precyzyjne\" na portalu AgTech kombain.pl. Jesteś ekspertem od systemów informacji geograficznej (GIS), teledetekcji satelitarnej, mapowania zmienności glebowej, technologii zmiennego dawkowania (VRA) oraz analityki danych z czujników IoT.\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu agronomii cyfrowej, analizy danych przestrzennych (Big Data) i telemetrii IoT, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"[WPISZ DOKŁADNĄ NAZWĘ KATEGORII]\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        80
+      ],
+      "id": "a6f3279f-a945-4392-bcd1-ab8c5aba2c07",
+      "name": "Rolnictwo Precyzyjne"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"Inteligentne Maszyny i Drony\" na portalu AgTech kombain.pl. Jesteś ekspertem od [WPISZ KOMPETENCJE, np. algorytmów uczenia maszynowego, widzenia komputerowego i automatyzacji procesów w rolnictwie].\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu mechatroniki, systemów nawigacji RTK/GPS, sensoryki LiDAR, robotyki polowej (Field Robotics) oraz bezzałogowych statków powietrznych (UAV) w zaawansowanych zastosowaniach rolniczych, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"Inteligentne Maszyny i Drony\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        272
+      ],
+      "id": "57e36256-8b6a-44c8-b0df-160175a4c9a7",
+      "name": "Inteligentne Maszyny i Drony"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"Biotechnologia i Nauka\" na portalu AgTech kombain.pl. Jesteś ekspertem od inżynierii genetycznej, biologii molekularnej, metod edycji genomu (CRISPR-Cas), mikrobiologii gleby oraz zaawansowanych technik hodowli komórkowych in-vitro, np. algorytmów uczenia maszynowego, widzenia komputerowego i automatyzacji procesów w rolnictwie].\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu najnowszych badań naukowych, genetyki syntetycznej i procesów biochemicznych, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"Biotechnologia i Nauka\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        464
+      ],
+      "id": "6fb20c04-524f-4fc9-902a-57636055f3ec",
+      "name": "Biotechnologia i Nauka"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"Agroenergetyka\" na portalu AgTech kombain.pl. Jesteś ekspertem od rozproszonych źródeł energii (OZE), inżynierii agrofotowoltaicznej, technologii biogazowych nowej generacji, systemów magazynowania energii oraz optymalizacji mikrosieci (Microgrids).\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu inżynierii energetycznej, technologii wodorowych, biogazowych i efektywności OZE, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"Agroenergetyka\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        656
+      ],
+      "id": "0f74de30-a834-4440-a0c6-2422071062d4",
+      "name": "Agroenergetyka"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Działasz jako Redaktor Działu \"Biznes AgTech i Prawo\" na portalu AgTech kombain.pl. Jesteś ekspertem od modelowania finansowego SaaS/AgTech, fuzji i przejęć (M&A) w sektorze technologicznym, analizy trendów Venture Capital oraz regulacji prawnych (compliance) dla autonomii, dronów i wykorzystania danych z AI.\n\nTwoim zadaniem jest napisanie pełnowymiarowego, autorskiego i wysokiej jakości artykułu eksperckiego w języku polskim, bazującego na poniższych materiałach źródłowych. Kategorycznie zabraniam streszczania tekstu i tłumaczenia go słowo w słowo. Masz stworzyć niezależną, wyczerpującą publikację opartą na faktach ze źródła, dostosowaną do świadomego technologicznie rolnika i przedsiębiorcy.\n\nDANE ŹRÓDŁOWE:\nTytuł: $('Fetch Historical Context').all().map(e => e.json)\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\nURL źródła: $('HTML Text Extractor').item.json.article_text\n\nWYTYCZNE TREŚCIOWE I SEO (Dla klucza 'content_html'):\n1. Wstęp z hookiem: 3–5 zdań otwierających, zawierających mocny haczyk (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.\n2. Struktura HTML: Używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <ul>, <li>. Samodzielnie stwórz logiczną architekturę nagłówków.\n3. Rozwinięcie: Pełny, merytoryczny artykuł. Każdy nagłówek H2/H3 zaczyna się angażującym zdaniem. Uzupełniaj treść o tło technologiczne z zakresu strategii rynkowych, skalowania biznesu technologicznego i analizy ram prawnych, analizując surowe fakty z tekstu. \n4. Styl: Ekspercki, technologiczny, analityczny. Brak języka sprzedażowego i lania wody.\n5. Zakończenie: Mocne zamknięcie. Podaj konkretne wnioski dotyczące wdrożenia tej technologii lub jej wpływu na rynek.\n6. Źródło: Na samym końcu treści (jako ostatni element HTML) dodaj tag <p> z tekstem \"Źródło: \" i linkiem do oryginału w tagu <a> (użyj przekazanego URL źródła).\n\nWYTYCZNE DLA METADANYCH:\n1. Klucz 'title': Max 60 znaków, chwytliwy tytuł po polsku zoptymalizowany pod SEO.\n2. Klucz 'slug': Przyjazny dla URL, małe litery, myślniki, bez znaków PL.\n3. Klucz 'tldr': Dokładnie 3-5 krótkich, konkretnych wniosków technicznych w formie tablicy stringów.\n4. Klucz 'category': Przypisz na sztywno wartość \"Biznes AgTech i Prawo\".\n5. Klucz 'tags': Tablica max 4 dynamicznych tagów związanych z tekstem (np. [\"machine learning\", \"drony\"]), pisane małymi literami.\n6. Klucz 'tech_summary': Obiekt JSON zawierający klucze: \"podmiot\" (główna firma/twórca), \"technologia\" (rodzaj rozwiązania) oraz \"cel_wdrozenia\" (mierzalny wynik).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON. Brak jakichkolwiek wstępów i podsumowań od AI."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3776,
+        848
+      ],
+      "id": "3db28686-7ce8-4ea0-9f88-220397c7230e",
+      "name": "Biznes AgTech i Prawo"
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"id\": \"df770fcc-7581-48a1-a240-4923891eb040\",\n  \"title\": \"Testowy tytuł artykułu\",\n  \"link\": \"https://kombain.pl/test-link\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        256
+      ],
+      "id": "47379daa-bd61-44d6-8a5f-2ac914273df5",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(id) AS czujnik_duplikatu \nFROM articles \nWHERE source_url = '{{ $json.link }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        752,
+        256
+      ],
+      "id": "e6550167-39b4-4851-a94d-da88910c79d3",
+      "name": "Check URL Duplicate",
+      "credentials": {
+        "postgres": {
+          "id": "PUzqPvhc3T8exX3M",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Dynamiczne pobranie danych z dowolnego węzła wejściowego\nconst html = $input.item.json.html || $input.item.json.data || $input.item.json.content;\n\nif (!html) {\n    return { article_text: \"\", is_valid_length: false, reason: \"Brak kodu HTML\" };\n}\n\n// 2. Twarde wycięcie sekcji generujących szum tokenowy\nlet cleanHtml = html\n    .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')   // Skrypty JS\n    .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')     // Style CSS\n    .replace(/<noscript[^>]*>[\\s\\S]*?<\\/noscript>/gi, '')\n    .replace(/<header[^>]*>[\\s\\S]*?<\\/header>/gi, '')   // Menu\n    .replace(/<footer[^>]*>[\\s\\S]*?<\\/footer>/gi, '')   // Stopka\n    .replace(/<nav[^>]*>[\\s\\S]*?<\\/nav>/gi, '')         // Nawigacja\n    .replace(/<svg[^>]*>[\\s\\S]*?<\\/svg>/gi, '');        // Ikony\n\n// 3. Usunięcie tagów HTML, pozostawienie czystego tekstu\nlet cleanText = cleanHtml.replace(/<[^>]+>/g, ' ');\n\n// 4. Normalizacja białych znaków i usunięcie wielokrotnych nowych linii\ncleanText = cleanText\n    .replace(/\\s+/g, ' ')\n    .replace(/\\n+/g, '\\n')\n    .trim();\n\n// 5. HARD FILTER: Weryfikacja minimalnej długości tekstu (np. 800 znaków)\nconst MIN_CHAR_LENGTH = 800;\nconst isValid = cleanText.length >= MIN_CHAR_LENGTH;\n\nreturn {\n    article_text: cleanText,\n    is_valid_length: isValid,\n    char_count: cleanText.length,\n    reason: isValid ? \"OK\" : `Tekst zbyt krótki (${cleanText.length} znaków). Prawdopodobnie pusta zajawka lub wideo.`\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        256
+      ],
+      "id": "182509fe-d0e6-464b-a45f-2cdce4b3b31e",
+      "name": "HTML Text Extractor"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM categories WHERE name = '{{ $json.category }}' LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4560,
+        896
+      ],
+      "id": "8fcd3845-6a7a-403b-8fdf-64919c8ec95c",
+      "name": "Get Category ID",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "PUzqPvhc3T8exX3M",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO articles (\n    title, \n    source_url, \n    status, \n    text_content,\n    source_id\n) VALUES (\n    '{{ ($('When Executed by Another Workflow').first().json.title || \"BRAK_TYTULU_TEST\").replace(/'/g, \"''\") }}', \n    '{{ ($('When Executed by Another Workflow').first().json.link || $('When Executed by Another Workflow').first().json.url || \"\").replace(/'/g, \"''\") }}', \n    'rejected', \n    '{{ ($json.reason || \"Brak uzasadnienia\").replace(/'/g, \"''\") }}',\n    {{ $('When Executed by Another Workflow').first().json.id ? ( $('When Executed by Another Workflow').first().json.id.startsWith('=') ? `'${$('When Executed by Another Workflow').first().json.id.substring(1)}'` : `'${$('When Executed by Another Workflow').first().json.id}'` ) : 'NULL' }}\n)\nON CONFLICT (source_url) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3200,
+        544
+      ],
+      "id": "ff0f9d8f-eee3-47ae-bb76-3aac268f4322",
+      "name": "Execute a SQL query"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "name"
+        },
+        "table": {
+          "__rl": true,
+          "value": "article_tags",
+          "mode": "list",
+          "cachedResultName": "article_tags"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_id": "={{ $('Insert Article').first().json.id }}",
+            "tag_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tag_id",
+              "displayName": "tag_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5920,
+        896
+      ],
+      "id": "4f09df94-9956-463a-8544-f0663abe7caa",
+      "name": "Link Article Tags"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO articles (\n    source_id, \n    title, \n    source_url, \n    text_content, \n    tldr, \n    tech_summary, \n    status, \n    category_id\n) VALUES (\n    $5,\n    $1,        \n    $6,\n    $2,        \n    $3::jsonb,   \n    $4::jsonb,   \n    'published',\n    $7\n)\nON CONFLICT (source_url) DO UPDATE SET \n    title = EXCLUDED.title,\n    text_content = EXCLUDED.text_content,\n    tldr = EXCLUDED.tldr,\n    tech_summary = EXCLUDED.tech_summary\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5152,
+        896
+      ],
+      "id": "16fc8598-d460-41e7-83c0-80301f7de66e",
+      "name": "Insert Article"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2c93ee2c-0036-4d07-b72d-50d25787bbbd",
+              "leftValue": "={{ $json.error ? $json.error.message : \"\" }}",
+              "rightValue": "403",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "a4834fb6-8d22-4aba-8d7c-c929bee93bdb",
+              "leftValue": "={{ $json.error ? $json.error.message : \"\" }}",
+              "rightValue": "429",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1392,
+        240
+      ],
+      "id": "f93cc310-0bcf-4cb3-b449-160fc58730f3",
+      "name": "Is Blocked by Cloudflare?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('When Executed by Another Workflow').first().json.link }}",
+        "additionalOptions": {}
+      },
+      "type": "n8n-nodes-scrapingant.scrapingAnt",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "51ebdea1-8cc6-46e0-a4c0-a7560104c5af",
+      "name": "ScrapingAnt"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('When Executed by Another Workflow').first().json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1200,
+        240
+      ],
+      "id": "791d7aa3-813c-4168-88ff-5488c602eacc",
+      "name": "HTTP Request",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT title, tech_summary FROM articles \nWHERE status = 'published' AND created_at > NOW() - INTERVAL '14 days';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2144,
+        144
+      ],
+      "id": "c7ba8036-6019-4afb-a845-87f65ddff956",
+      "name": "Fetch Historical Context",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.1-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.1-flash-lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Oceń, czy nowy artykuł to duplikat informacyjny (tzw. news echo) na podstawie bazy opublikowanych już technologii, oraz czy spełnia rygorystyczne kryteria tematyczne portalu kombain.pl.\n\nBAZA WIEDZY (Ostatnie wpisy z PocketBase):\n{{ $('Fetch Historical Context').all().map(e => e.json) }}\n\nNOWY ARTYKUŁ Z RSS:\nTytuł: {{ $('When Executed by Another Workflow').first().json.title }}\nTreść: {{ $('HTML Text Extractor').item.json.article_text }}\n\nReguły decyzyjne:\n1. DEDUPLIKACJA: Jeśli podmiot i technologia w Nowym Artykule pokrywają się z jakimkolwiek wpisem w Bazie Wiedzy, ustaw 'is_duplicate' na true.\n2. ADEKWATNOŚĆ (HARD FILTER): Portal kombain.pl skupia się WYŁĄCZNIE na zaawansowanym AgTech. \nOdrzuć artykuł (ustaw 'is_relevant' na false), jeśli tekst dotyczy:\n- Raportów rynkowych, cen płodów rolnych, giełdy, ogólnych strajków czy standardowych dopłat.\n- Zwykłych maszyn rolniczych bez komponentu \"Smart\" (np. nowy heder, pług, tradycyjny traktor bez autonomii).\nZaakceptuj (true) tylko jeśli tekst opisuje AI, IoT, autonomię, drony, robotykę, biotechnologię, agroenergetykę lub oprogramowanie dla rolnictwa.\n3. KATEGORYZACJA: Przypisz artykułowi dokładnie jedną kategorię ze sztywnej listy: [\"AI i Automatyzacja\", \"Rolnictwo Precyzyjne\", \"Inteligentne Maszyny i Drony\", \"Biotechnologia i Nauka\", \"Agroenergetyka\", \"Biznes AgTech i Prawo\"]. \nUWAGA: Do \"Biznes AgTech i Prawo\" przypisuj wyłącznie teksty o finansowaniu startupów, przejęciach w sektorze AgTech lub regulacjach dla nowych technologii (np. prawo dronowe, AI). Zwykłe prawo rolne odrzucaj (is_relevant: false).\n\nZwróć dane ściśle według zdefiniowanego formatu JSON:\n\n{\n  \"type\": \"OBJECT\",\n  \"properties\": {\n    \"is_duplicate\": {\n      \"type\": \"BOOLEAN\",\n      \"description\": \"True jeśli ten sam podmiot i technologia już istnieją w bazie wiedzy.\"\n    },\n    \"is_relevant\": {\n      \"type\": \"BOOLEAN\",\n      \"description\": \"True jeśli artykuł to twardy AgTech (AI, robotyka, IoT). False jeśli to zwykłe rolnictwo, rynki, ceny lub maszyny bez Smart.\"\n    },\n    \"reason\": {\n      \"type\": \"STRING\",\n      \"description\": \"Krótkie uzasadnienie decyzji o duplikacji i adekwatności.\"\n    },\n    \"category\": {\n      \"type\": \"STRING\",\n      \"description\": \"Dokładna nazwa kategorii ze sztywnej listy. Wybierz jedną z sześciu dozwolonych.\"\n    }\n  },\n  \"required\": [\"is_duplicate\", \"is_relevant\", \"reason\", \"category\"]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        2672,
+        272
+      ],
+      "id": "b17c146f-ad8a-4bbd-8941-5759b3e7cb6e",
+      "name": "Bramkarz LLM"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql_tags_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5680,
+        896
+      ],
+      "id": "8a0a68b2-65b6-409a-98be-476ff82a5534",
+      "name": "Execute Tag Sync"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Izolujemy dane i rzutujemy je twardo na odpowiednie typy, uodporniając się na błędy parsowania.\nconst title = $('Parse Synthesis JSON').first().json.title || \"\";\nconst content_html = $('Parse Synthesis JSON').first().json.content_html || \"\";\nconst tldr = JSON.stringify($('Parse Synthesis JSON').first().json.tldr || {});\nconst tech_summary = JSON.stringify($('Parse Synthesis JSON').first().json.tech_summary || {});\nconst source_id = $('When Executed by Another Workflow').first().json.id || null;\nconst source_url = $('Loop Over Items').first().json.link || \"\";\nconst category_id = $('Get Category ID').first().json.id || null;\n\n// Dodajemy zbudowaną tablicę parametrów do wyjścia\nreturn {\n    json: {\n        ...$input.first().json,\n        sql_params: [title, content_html, tldr, tech_summary, source_id, source_url, category_id]\n    }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        896
+      ],
+      "id": "d0bf8e15-3fcd-410d-9f42-b0d193f651cb",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ace83833-ae3f-4ac4-9cd4-576bcf797de8",
+              "leftValue": "={{ $json.is_valid_length }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1872,
+        272
+      ],
+      "id": "f8a5be8b-a4b8-4a89-a65c-c431dbed4829",
+      "name": "is_valid_length"
+    }
+  ],
+  "connections": {
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "AI i Automatyzacja",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rolnictwo Precyzyjne",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Inteligentne Maszyny i Drony",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Biotechnologia i Nauka",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agroenergetyka",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Biznes AgTech i Prawo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Synthesis JSON": {
+      "main": [
+        [
+          {
+            "node": "Get Category ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hurtowe Mapowanie Tagów": {
+      "main": [
+        [
+          {
+            "node": "Execute Tag Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI i Automatyzacja": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rolnictwo Precyzyjne": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inteligentne Maszyny i Drony": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Biotechnologia i Nauka": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agroenergetyka": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Biznes AgTech i Prawo": {
+      "main": [
+        [
+          {
+            "node": "Parse Synthesis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Check URL Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check URL Duplicate": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML Text Extractor": {
+      "main": [
+        [
+          {
+            "node": "is_valid_length",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Category ID": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        []
+      ]
+    },
+    "Link Article Tags": {
+      "main": [
+        []
+      ]
+    },
+    "Insert Article": {
+      "main": [
+        [
+          {
+            "node": "Hurtowe Mapowanie Tagów",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Blocked by Cloudflare?": {
+      "main": [
+        [
+          {
+            "node": "ScrapingAnt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTML Text Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ScrapingAnt": {
+      "main": [
+        [
+          {
+            "node": "HTML Text Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Is Blocked by Cloudflare?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Historical Context": {
+      "main": [
+        [
+          {
+            "node": "Bramkarz LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bramkarz LLM": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Tag Sync": {
+      "main": [
+        [
+          {
+            "node": "Link Article Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Insert Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "is_valid_length": {
+      "main": [
+        [
+          {
+            "node": "Fetch Historical Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f3e59d8b2db92e5d75d4c24b2bfea908e1817923f90565449c41582f86a77584"
+  }
+}

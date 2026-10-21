@@ -1,0 +1,433 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, url, type, link_selector FROM sources WHERE is_active = true;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -672,
+        -16
+      ],
+      "id": "b5b3ed5a-c271-4499-ab36-77cbcd402b79",
+      "name": "Fetch Active Sources",
+      "credentials": {
+        "postgres": {
+          "id": "PUzqPvhc3T8exX3M",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "KCCrOF_aTBrLMHr9sif4p",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/KCCrOF_aTBrLMHr9sif4p",
+          "cachedResultName": "Worker - Przetwarzanie Źródła"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "link_selector",
+              "displayName": "link_selector",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1072,
+        368
+      ],
+      "id": "0bd631b5-a308-4c78-953d-7828e6aeab1c",
+      "name": "Call 'Worker - Przetwarzanie Źródła'"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -432,
+        -16
+      ],
+      "id": "2d28d7ce-b7e8-427e-a506-9a79614ae4e1",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -16
+      ],
+      "id": "ec6868d3-36bc-4d58-b3e7-cb676489028c",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -16
+      ],
+      "id": "2ac6cbcb-f7ea-4354-a9b7-94ce39c082b9",
+      "name": "RSS Read",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "rss",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "92bb379c-90a9-44af-b742-e819bf384640"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rss"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cf2336eb-e3ff-46f3-810e-aedbb878d227",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "scraper",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "scraper"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -208,
+        0
+      ],
+      "id": "28509ffc-3ff8-45f5-b1a6-5f9cb9a1a99e",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Fetch Active Sources').item.json.url }}",
+        "additionalOptions": {}
+      },
+      "type": "n8n-nodes-scrapingant.scrapingAnt",
+      "typeVersion": 1,
+      "position": [
+        336,
+        256
+      ],
+      "id": "fc484e6b-c419-4c0c-b359-3d902b9d180b",
+      "name": "ScrapingAnt1",
+      "credentials": {
+        "scrapingAntApi": {
+          "id": "du6Y0H9Xb2VJRqHl",
+          "name": "ScrapingAnt account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.item.json.html || \"\";\nconst source = $('Fetch Active Sources').item.json;\nconst sourceUrl = source.url;\nconst sourceId = source.id;\n\nconst matchDomain = sourceUrl.match(/^(https?:\\/\\/[^\\/]+)/);\nconst baseUrl = matchDomain ? matchDomain[1] : '';\n\nlet normalizedData = [];\n\nif (html) {\n    const hrefRegex = /<a\\s+(?:[^>]*?\\s+)?href=\"([^\"]*)\"[^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let regexMatch;\n\n    while ((regexMatch = hrefRegex.exec(html)) !== null) {\n        let link = regexMatch[1].trim();\n        let title = regexMatch[2].replace(/<[^>]+>/g, '').trim();\n\n        if (!link || !title || title.length < 10 || link.startsWith('#') || link.startsWith('javascript:')) {\n            continue;\n        }\n\n        if (link.startsWith('/')) {\n            link = baseUrl + link;\n        } else if (!link.startsWith('http')) {\n            continue;\n        }\n\n        const lowLink = link.toLowerCase();\n\n        // RESTRYKCYJNY FILTR: Akceptuj TYLKO linki prowadzące do artykułów\n        if (!lowLink.includes('/articles/')) {\n            continue;\n        }\n\n        // Dodatkowe czyszczenie śmieciowych parametrów śledzących z URL (opcjonalne, czyści linki z maili)\n        if (link.includes('&amp;')) {\n            link = link.split('&amp;')[0];\n        }\n        if (link.includes('?utm_')) {\n            link = link.split('?utm_')[0];\n        }\n\n        if (!normalizedData.some(item => item.link === link)) {\n            normalizedData.push({\n                id: sourceId,\n                title: title,\n                link: link\n            });\n        }\n    }\n}\n\nconst maxItems = 15;\nconst slicedData = normalizedData.slice(0, maxItems);\n\nreturn slicedData.map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        256
+      ],
+      "id": "8e836ea9-fbbc-4f03-84ee-2bb06261e6d7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1256d7b4-a304-43fa-8612-d1cb2e1b4ccc",
+              "leftValue": "={{ $json.error ? true : false }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        288,
+        32
+      ],
+      "id": "3866ab52-4b22-41de-b216-cfbe690b96da",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "99a8de66-a9f9-41a3-9df2-5d45db43886c",
+              "name": "id",
+              "value": "=={{ $('Fetch Active Sources').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        544,
+        48
+      ],
+      "id": "2ede5882-35b1-4f0f-931e-0932c568a5ee",
+      "name": "Edit Fields"
+    }
+  ],
+  "connections": {
+    "Fetch Active Sources": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Worker - Przetwarzanie Źródła'": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ScrapingAnt1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ScrapingAnt1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Call 'Worker - Przetwarzanie Źródła'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "ScrapingAnt1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Call 'Worker - Przetwarzanie Źródła'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f3e59d8b2db92e5d75d4c24b2bfea908e1817923f90565449c41582f86a77584"
+  }
+}
