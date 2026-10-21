@@ -1,0 +1,10 @@
+{
+  "name": "kombain",
+  "private": true,
+  "packageManager": "bun@1",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "verify": "bash scripts/verify.sh",
+    "db:migrate": "psql \"$DIRECT_DATABASE_URL\" -f packages/db/schema.sql"
+  }
+}
