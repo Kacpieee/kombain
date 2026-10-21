@@ -6,3 +6,5 @@ node_modules/
 dist/
 *.sqlite
 docs/vps-inventory.md
+deploy/.env
+deploy/*.local.yml

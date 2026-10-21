@@ -373,4 +373,31 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
     );
     expect(rows[0]!.count).toBe("1");
   });
+
+  it("seed-sources.sql: 3 źródła RSS i re-run bez dubli", async () => {
+    const seed = readFileSync(new URL("../../deploy/sql/seed-sources.sql", import.meta.url), "utf8");
+
+    await db.query(seed);
+    await db.query(seed);
+
+    const { rows } = await db.query<{ name: string; type: string; is_active: boolean }>(
+      "SELECT name, type, is_active FROM sources ORDER BY name"
+    );
+    expect(rows.map((r) => r.name)).toEqual(["AgFunderNews", "Future Farming", "PrecisionAg"]);
+    expect(rows.every((r) => r.type === "rss" && r.is_active)).toBe(true);
+  });
+
+  it("seed nie nadpisuje ręcznie wyłączonego źródła", async () => {
+    const seed = readFileSync(new URL("../../deploy/sql/seed-sources.sql", import.meta.url), "utf8");
+
+    await db.query(seed);
+    await db.query("UPDATE sources SET is_active = false WHERE name = 'PrecisionAg'");
+    await db.query(seed);
+
+    const { rows } = await db.query<{ is_active: boolean; total: string }>(
+      "SELECT is_active, (SELECT COUNT(*)::text FROM sources) AS total FROM sources WHERE name = 'PrecisionAg'"
+    );
+    expect(rows[0]!.is_active).toBe(false);
+    expect(rows[0]!.total).toBe("3");
+  });
 });
