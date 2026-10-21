@@ -5,3 +5,4 @@ archiwum/
 node_modules/
 dist/
 *.sqlite
+docs/vps-inventory.md

@@ -2,6 +2,11 @@
   "name": "@kombain/db",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./slug": "./slug.ts",
+    "./queries": "./queries.ts"
+  },
   "dependencies": { "pg": "^8.12.0" },
   "devDependencies": { "typescript": "^5.5.0" }
 }

@@ -1,8 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
-    "strict": true, "skipLibCheck": true, "esModuleInterop": true,
-    "outDir": "dist", "rootDir": "."
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
   },
-  "include": ["packages/*/index.ts", "packages/*/queries.ts", "apps/worker/src/**/*.ts"]
+  "include": ["packages/**/*.ts", "apps/worker/src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -5,6 +5,15 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "verify": "bash scripts/verify.sh",
-    "db:migrate": "psql \"$DIRECT_DATABASE_URL\" -f packages/db/schema.sql"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:db": "bash scripts/db-test.sh",
+    "db:migrate": "psql \"$DIRECT_DATABASE_URL\" -v ON_ERROR_STOP=1 -f packages/db/schema.sql"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.8"
   }
 }
