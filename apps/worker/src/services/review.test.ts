@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATEGORIES, buildEditorPrompt, type EditorOut, type R2Atom } from "../prompts.js";
+import { CATEGORIES, buildEditorPrompt, buildR2Prompt, type EditorOut, type R2Atom } from "../prompts.js";
 import { synthesizeArticle, type GenerateFn } from "./llm.js";
 import {
   buildSourceLink,
@@ -40,6 +40,26 @@ function generator(raw: string): { fn: GenerateFn; calls: Array<{ prompt: string
   };
   return { fn, calls };
 }
+
+describe("buildR2Prompt", () => {
+  it("wymaga dosłownego cytatu z artykułu (bez parafrazy)", () => {
+    const article: EditorOut = {
+      title: "T",
+      content_html: "<p>Fakt.</p>",
+      tldr: ["a", "b", "c"],
+      tags: ["t"],
+      tech_summary: { podmiot: "p", technologia: "t", cel_wdrozenia: "c" },
+      slug: "t",
+      external_refs: [],
+    };
+    const prompt = buildR2Prompt(article, "źródło");
+    expect(prompt).toContain("DOSŁOWNY fragment artykułu");
+    expect(prompt).toMatch(/znak w znak/);
+    expect(prompt).toContain("Bez tagów HTML");
+    expect(prompt).toContain("maks. 20");
+    expect(prompt).toContain("Atomy typu inference zgłaszaj");
+  });
+});
 
 describe("buildEditorPrompt", () => {
   it("wstrzykuje personę wybranego działu i tylko jego technologię", () => {
@@ -148,11 +168,15 @@ describe("stripInferences", () => {
     expect(result.missed).toEqual([]);
   });
 
-  it("zdanie przecięte tagiem = missed", () => {
-    const html = "<p>Rynek <strong>wzrośnie</strong> o 40%.</p>";
-    const atoms: R2Atom[] = [{ text: "Rynek wzrośnie o 40%.", type: "inference", evidence: "" }];
+  it("zdanie przecięte tagiem inline jest wycinane po widocznym tekście", () => {
+    const html = "<p>Rolnicy <strong>nie ufają</strong> dronom bez dowodów.</p>";
+    const atoms: R2Atom[] = [
+      { text: "Rolnicy nie ufają dronom bez dowodów.", type: "inference", evidence: "" },
+    ];
 
-    expect(stripInferences(html, atoms).missed).toHaveLength(1);
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.html).not.toContain("dronom");
   });
 
   it("elastyczne białe znaki i wielkość liter nie blokują wycięcia", () => {
@@ -615,7 +639,7 @@ describe("reviewArticle — R1/R2/R3", () => {
         runR1: async () => ({ pass: true, issues: [] }),
         runR2: async () => [
           { text: "Akapit pierwszy o dronach.", type: "inference", evidence: "" },
-          { text: "Wniosek rynek wzrośnie.", type: "inference", evidence: "" },
+          { text: "Zupełnie inny wniosek o polityce rolnej i dopłatach.", type: "inference", evidence: "" },
         ],
       }
     );

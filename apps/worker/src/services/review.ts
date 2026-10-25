@@ -170,6 +170,7 @@ export function stripInferences(
     }
 
     if (!found) found = removeFuzzySentences(parts, sentence, protectedTexts);
+    if (!found) found = removeByVisibleText(parts, sentence, protectedTexts);
 
     (found ? removed : missed).push(sentence);
   }
@@ -239,6 +240,35 @@ function normalizeText(text: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Dopasowanie po widocznym tekście bloku (p/li/h2/h3) — pozwala wyciąć cytat, który w HTML
+ * jest przecięty tagiem inline (<strong>/<em>). Formatowanie w tym bloku upraszcza się do tekstu.
+ */
+function removeByVisibleText(parts: string[], sentence: string, protectedTexts: string[]): boolean {
+  const { document } = parseHTML(`<div id="__review_root">${parts.join("")}</div>`);
+  const root = document.getElementById("__review_root");
+  if (!root) return false;
+
+  const flexible = new RegExp(escapeRegex(sentence).replace(/\s+/g, "\\s+"), "i");
+  let found = false;
+
+  for (const block of root.querySelectorAll("p, li, h2, h3")) {
+    const text = block.textContent ?? "";
+    if (!flexible.test(text)) continue;
+    if (isProtectedSentence(text, protectedTexts)) continue;
+
+    block.textContent = text.split(flexible).join("");
+    found = true;
+  }
+
+  if (found) {
+    const updated = root.innerHTML.split(/(<[^>]+>)/g);
+    parts.length = 0;
+    parts.push(...updated);
+  }
+  return found;
 }
 
 function words(text: string): Set<string> {

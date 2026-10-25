@@ -64,3 +64,7 @@ Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumow
 ### Hotfix 3 (parafrazy w R2)
 
 Fuzzy dopasowanie zdań: próg Jaccard **0.75**, iteracyjne usuwanie wszystkich trafień, ochrona zdań-atomów `supported/external` przez containment; guard pustej treści po wycięciu (`draft R2`). 3 rundy Reviewera (test ochrony był pusty, próg 0.6 usuwał zdania poparte źródłem), końcowo Approve. Ryzyka: krótki atom `supported` (<20 znaków) może ochronić zdanie z wnioskiem; guard pustej treści bez testu.
+
+### Hotfix 4 (cytaty R2 + inline tagi)
+
+Prompt R2 wymaga dosłownego cytatu bez tagów HTML; `inference` zawsze zgłaszane (poza limitem 20). Matcher dostał `removeByVisibleText` (dopasowanie po `textContent` bloku, ochrona atomów supported/external), więc zdania ze `<strong>/<em>` też są wycinane. 3 rundy Reviewera (m.in. pozorny fix promptu), końcowo Approve. Ryzyka: mieszane wystąpienia (exact + inline) mogą zostawić jedno; exact-path bez ochrony supported.

@@ -174,10 +174,13 @@ ${article.content_html}
 TEKST ŹRÓDŁOWY:
 ${sourceText}
 
-Dla każdego atomu (pojedyncze zdanie lub twierdzenie) wskaż:
+Dla każdego atomu (tylko twierdzenia faktograficzne i opinie, nie każde zdanie) wskaż:
+- "text" — **DOSŁOWNY fragment artykułu skopiowany znak w znak** (bez parafrazy, bez zmiany kolejności słów, bez skracania w środku zdania). **Bez tagów HTML** — tylko widoczny tekst; jeśli w zdaniu są <strong>/<em>, pomiń znaczniki, zachowaj słowa.
 - "supported" — wprost wynika z tekstu źródłowego (evidence: krótki cytat ze źródła),
 - "external" — fakt spoza źródła (liczba, data, nazwa, regulacja), wymagający weryfikacji w sieci,
-- "inference" — wniosek/domysł autora bez dowodu (evidence puste).
+- "inference" — wniosek/opinia autora bez dowodu (evidence puste).
+
+Zasady zgłaszania: maks. 20 atomów typu supported/external (priorytet: external, potem supported). Atomy typu inference zgłaszaj **zawsze**, nawet jeśli limit został wyczerpany — muszą być wycięte z artykułu przed publikacją.
 Zwróć JSON: {"atoms": [{"text": "...", "type": "supported|external|inference", "evidence": "..."}]}.`;
 }
 
