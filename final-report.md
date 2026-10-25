@@ -1,44 +1,52 @@
-# Final report — F2-T3 (`llm.ts + gatekeeper`)
+# Final report — F2-T4 (`editor + review + factcheck`)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Summary
-Powstał Bramkarz: prompt z bazą wiedzy z 30 dni (bez PocketBase), JSON Schema dla Gemini Structured Outputs 1:1 z Zod, `classifyArticle` z wstrzykiwanym `generate` (testy bez API). `is_duplicate || !is_relevant` → `rejected` z powodem; kategoria spoza enuma / błędny JSON / błąd modelu → `error` (blokada persist), nigdy cichy publish.
+Powstał tor redakcyjny: jeden szablon promptu × 6 person (`CATEGORY_PERSONAS`), walidacja i normalizacja wyjścia Redaktora, sanityzacja HTML do allowlisty, R1 (lokalny + LLM, retry przez `regenerate`), R2 (atomy `supported/external/inference`, wycinanie wniosków bez dowodu), R3 (search grounding tylko dla `external`, `refuted` → `draft`, `uncertain` → `draft + needs_human_check`). Link „Źródło:” dokleja kod, nigdy model.
 
 ## Changes
-- `apps/worker/src/prompts.ts` — `GatekeeperPromptInput`, `buildGatekeeperPrompt` (reguły hard filtru, pełna lista 6 kategorii, historia 30 dni skrócona do 300 znaków na wpis)
-- `apps/worker/src/services/llm.ts` — `GATEKEEPER_RESPONSE_SCHEMA`, `GenerateFn`, `classifyArticle` (accepted/rejected/error), `defaultGenerate` (dynamiczny import `@google/genai`, `responseMimeType: application/json`, `temperature: 0`), `describeError` (Zod issues bez wycieku promptu)
-- `apps/worker/src/services/llm.test.ts` — 16 testów schematu/promptu/routingu stanów, zero wołań Gemini
-- `docs/plans.md` (F2-T3 usunięty, TERAZ → F2-T4), `docs/STATUS.md`
+- `apps/worker/src/prompts.ts` — `buildEditorPrompt` (persona + tech_context, zakaz linku źródła), `buildR1Prompt`, `buildR2Prompt`, `buildR3Prompt`, schematy `R1Schema`/`R2Schema`/`R3Schema`, `external_refs` z typem `external|supported`
+- `apps/worker/src/services/llm.ts` — `synthesizeArticle` (3.8 Flash, normalizacja tagów/sluga/tech_summary), `EDITOR_RESPONSE_SCHEMA`, `createGenerator`, `formatLlmError`, `search` w `GenerateFn`
+- `apps/worker/src/services/review.ts` — `sanitizeEditorHtml`, `validateTechnical`, `stripInferences`, `buildSourceLink`, `reviewArticle` (R1 → R2 → R3, stany `published`/`draft` + `needsHumanCheck`)
+- `apps/worker/src/services/factcheck.ts` — `verifyExternalAtoms` (R3, `search: true`, schemat + Zod)
+- `apps/worker/src/services/review.test.ts` — 35 testów bez API
+- `apps/worker/src/services/factcheck.test.ts` — 4 testy (search grounding, pusta lista, Zod z etykietą R3, błąd modelu)
+- `docs/plans.md` (F2-T4 usunięty, TERAZ → F2-T5), `docs/STATUS.md`
 - Branch: `main`
 
 ## Verification (liczbowo, po ostatniej poprawce)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **88 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20 + scraper 20 + gatekeeper 16)
+- vitest: **127 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20 + scraper 20 + gatekeeper 16 + review 35 + factcheck 4)
 - PG-docker: **22 passed** (bez zmian)
-- Zero wywołań Gemini/ScrapingAnt w testach (wstrzykiwany `generate`)
+- Zero wywołań Gemini w testach (wstrzykiwany `generate`, `runR1`/`runR2`/`verifyExternal`)
 
 ## Review Loop Audit
-- Liczba rund Reviewera: 1
+- Liczba rund Reviewera: 3
 - Przebieg rund:
-  - Runda 1: **Approve** (0 blokerów; 8 ryzyk nieblokujących)
+  - Runda 1: Request changes — 4 blokery (R3 bez pokrycia 1:1 atomów; lokalny fail R1 omijał retry; `external_refs[]` poza R3; brak testów inwariantów)
+  - Runda 2: Request changes — 3 blokery (sprzeczne werdykty R3 rozstrzygane kolejnością tablicy; etykieta błędu R3 jako „Bramkarza”; brak testów retry „oba” i zachowania metadanych w `draft()`)
+  - Runda 3: **Approve** — 0 blokerów; mutacje potwierdziły, że agregacja werdyktów, etykieta R3 i nowe testy inwariantów realnie czerwienieją po cofnięciu poprawek
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Prompt nie przycina treści artykułu — przy bardzo długich tekstach rośnie koszt tokenów; limit długości wejścia do ustalenia w F2-T6 (config).
-- `GatekeeperSchema` dopuszcza dodatkowe pola i pusty `reason`; dla `rejected` pusty powód trafi do DB jako `""` — do zaostrzenia (`reason.min(1)`) po decyzji, czy chcemy blokować takie odpowiedzi.
-- Brak retry Bramkarza (zgodnie ze specyfikacją): błąd modelu = `draft`, więc temat nie ginie, ale wymaga kolejnego runu.
-- `responseSchema` jest ręcznym odpowiednikiem Zod (bez generatora) — rozjazd możliwy przy zmianie enuma; pilnuje tego test porównujący 6 kategorii.
-- `defaultGenerate` tworzy nowego klienta `GoogleGenAI` na każde wywołanie — do cache'owania w F2-T6, jeśli run będzie miał wiele artykułów.
-- Konflikt AGENTS §2.5 vs §2.8 dla `is_duplicate=true` (wiersz `rejected` vs ciche porzucenie) — `classifyArticle` zwraca całą decyzję, więc rozstrzygnięcie zapada w F2-T5/T6; musi być jawne, inaczej duplikat semantyczny zablokuje ponowienie.
-- Hard filter w promptcie nie jest asertowany w testach (tylko tytuł/URL/30 dni/enum) — przyszła edycja promptu może go wykasować bez czerwonego testu; do dopięcia przy F2-T4.
-- `describeError` przepuszcza surowy `message` z SDK — jeśli Gemini zwróci fragment promptu w błędzie, trafi on do logów; redakcja w F2-T6.
+- R2 wycina inference tylko przy dokładnym dopasowaniu zdania w węźle tekstowym; zdanie przecięte tagiem → `missed` → `draft` (bezpieczne, ale wymaga ręcznej korekty).
+- „Dowód” inference musi mieć ≥20 znaków i ≥3 słowa oraz pierwsze 40 znaków obecne w źródle — parafrazy mogą zostać odrzucone (bezpieczny kierunek).
+- R3 ufa etykietom R2 (`supported/external`); błędna etykieta `supported` dla faktu spoza źródła omija weryfikację sieciową.
+- Duplikaty werdyktów R3 rozstrzyga najgorszy (`refuted` > `uncertain` > `confirmed`); `confirmed` wymaga `http(s)` URL.
+- Brak limitu domen dla `evidence_url` i brak walidacji treści dowodu.
+- Retry R1 działa tylko, gdy pipeline poda `regenerate`; błąd API (np. 429) zużywa jedyny retry.
+- Sanityzacja rozpina niedozwolone tagi (zachowuje tekst) i usuwa atrybuty; `<script>/<iframe>/<style>` usuwane w całości.
+- `buildSourceLink` nie jest jeszcze wołany w pipeline (F2-T5/T6 zdecyduje: `text_content` vs render w Astro).
+- Brak minimalnej struktury treści w lokalnym R1 (`<p></p>` przechodzi meta-check; decyduje LLM R1).
+- Test pokrywa zachowanie `external` w drafcie tylko dla `refuted`; gałąź `uncertain` nie ma asercji (kod poprawny — limit 3 rund Reviewera).
+- `mergeExternalAtoms` nie ogranicza liczby `external_refs[]` wchodzących do R3 (koszt search groundingu).
 
 ## Out of scope (celowo nietknięte)
-- Redaktor/review/factcheck (F2-T4), persist, media/R2, Astro, `deploy/`.
+- `media.ts`, `persist`, orchestrator/pipeline, Astro, `deploy/`.
 
 ## Next steps
-- F2-T4 `editor + review + factcheck`: 1 szablon × 6 person, `external_refs[]`, R1/R2/R3 z groundingiem, `refuted/uncertain` → `draft` (+`needs_human_check`).
+- F2-T5: `media.ts` (sharp 1200×675 webp80 → R2, fallback default kategorii) + `persist` (transakcja, slug + suffix, tag sync, draft-vs-rejected) + testy PG.
