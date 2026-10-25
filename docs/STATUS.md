@@ -14,12 +14,13 @@
 - F2-T7a: CLI workera — `run --dry-run` (bez media/save/reject, `wouldBe`), `--url` (pojedynczy link), `--limit/--max-links/--source-id`, `preview-prompt` (gate/editor/r1/r2/r3 z tych samych builderów), `check-env` (maskowane); `scripts/worker-run.sh`; 18 testów CLI
 
 - F2-T7b: obserwowalność — Telegram (jedno podsumowanie/run + ALERT przy `errors>=3`/wszystkich źródłach/soft timeout), healthchecks start/success/fail, `worker_fatal` z alertem, twardy timeout 30 min w cronie, `MAX_PROCESSED_PER_RUN` + soft deadline, `article_failures` (backoff 3 próby/7 dni) + migracja; 211 unit + 33 PG
+- F2-T9b: R3 recall tuning — query builder (encje/liczby/rok, granica słowa), bramka trafności + SERP fallback, warunkowy Fetch dla search i SERP, metryki `verify_*` w `run_summary`, `VERIFY_MAX_ATOMS`; 285 unit + 33 PG, Reviewer 4/3 Approve
 
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
-- F2-T9b R3 recall tuning (query builder, relevance gate, warunkowy Fetch, metryki)
+- OPS (VPS): wdrożenie F2-T9b + dry-run + pomiar `draft_rate`/`verify_*`
 - F3-T1 Astro Hybrid + strony
 
 ## Hotfixy po pierwszym runie na VPS
@@ -29,7 +30,6 @@
 - **F2-T8 research**: Bramkarz → research → Redaktor z briefem i zakazem nowych faktów; atomy pokryte briefem pomijają R3
 - **F2-T8b**: research na DeepSeek Search (2 kwerendy) + dystylacja Flash-Lite (URL z indeksu wyniku), fallback SERP (ScrapingAnt + DDG), alert przy błędzie; `SEARCH_PROVIDER=gemini` rollback
 - **F2-T9**: R3 na DeepSeek — Search na claim → top-5 dowodów → Fetch przy pustych summary → Flash-Lite sędzia (indeks→URL, cap 8), fallback SERP, `VERIFY_PROVIDER=gemini` rollback
-- **F2-T9b**: R3 recall tuning — query builder (encje/liczby/rok, granica słowa), bramka trafności + SERP fallback, warunkowy Fetch, metryki `verify_*` w `run_summary`, `VERIFY_MAX_ATOMS`; 285 testów unit + 33 PG
 
 ## Następne (z plans.md TERAZ)
 - F3-T1 Astro Hybrid + strony
