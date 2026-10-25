@@ -7,7 +7,7 @@ import {
 } from "../prompts.js";
 import type { EditorOut, R1Decision, R2Atom, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
-import type { FactcheckOutcome, VerifyStats } from "./factcheck.js";
+import type { FactcheckOutcome, VerifyReason, VerifyStats } from "./factcheck.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
 import type { GenerateFn } from "./llm.js";
 import { parseSynthesisJson } from "./ingestion.js";
@@ -40,7 +40,12 @@ const R2_RESPONSE_SCHEMA = {
   required: ["atoms"],
 } as const;
 
-export type ExternalVerdict = { claim: string; verdict: "confirmed" | "refuted" | "uncertain"; evidence_url: string };
+export type ExternalVerdict = {
+  claim: string;
+  verdict: "confirmed" | "refuted" | "uncertain";
+  evidence_url: string;
+  reason?: VerifyReason;
+};
 
 export interface ReviewDeps {
   generate?: GenerateFn;
@@ -417,7 +422,10 @@ export async function reviewArticle(
   if (externalAtoms.length > 0) {
     const factcheck = await verify(externalAtoms);
     if (factcheck.status === "error") {
-      return draft("R3", [factcheck.error], article, cleanedHtml, { removedInferences });
+      return draft("R3", [factcheck.error], article, cleanedHtml, {
+        removedInferences,
+        verify: factcheck.stats,
+      });
     }
 
     external = reconcileVerdicts(externalAtoms, factcheck.result.results);
@@ -482,22 +490,31 @@ function mergeExternalAtoms(atoms: R2Atom[], refs: EditorOut["external_refs"] | 
 /** Każdy atom external musi mieć werdykt; duplikaty rozstrzyga NAJGORSZY (refuted > uncertain > confirmed), confirmed bez URL = uncertain. */
 function reconcileVerdicts(
   atoms: R2Atom[],
-  results: Array<{ claim: string; verdict: ExternalVerdict["verdict"]; evidence_url: string }>
+  results: Array<{
+    claim: string;
+    verdict: ExternalVerdict["verdict"];
+    evidence_url: string;
+    reason?: VerifyReason;
+  }>
 ): ExternalVerdict[] {
   return atoms.map((atom) => {
     const matches = results.filter((result) => normalizeClaim(result.claim) === normalizeClaim(atom.text));
-    if (matches.length === 0) return { claim: atom.text, verdict: "uncertain", evidence_url: "" };
+    if (matches.length === 0) {
+      return { claim: atom.text, verdict: "uncertain", evidence_url: "", reason: "no_evidence" };
+    }
 
     if (matches.some((match) => match.verdict === "refuted")) {
-      return { claim: atom.text, verdict: "refuted", evidence_url: firstEvidenceUrl(matches) };
+      const match = matches.find((item) => item.verdict === "refuted");
+      return { claim: atom.text, verdict: "refuted", evidence_url: firstEvidenceUrl(matches), reason: match?.reason ?? "refuted" };
     }
     if (matches.some((match) => match.verdict === "uncertain")) {
-      return { claim: atom.text, verdict: "uncertain", evidence_url: "" };
+      const match = matches.find((item) => item.verdict === "uncertain");
+      return { claim: atom.text, verdict: "uncertain", evidence_url: "", reason: match?.reason ?? "judge_uncertain" };
     }
 
     const url = firstEvidenceUrl(matches);
-    if (!url) return { claim: atom.text, verdict: "uncertain", evidence_url: "" };
-    return { claim: atom.text, verdict: "confirmed", evidence_url: url };
+    if (!url) return { claim: atom.text, verdict: "uncertain", evidence_url: "", reason: "no_evidence" };
+    return { claim: atom.text, verdict: "confirmed", evidence_url: url, reason: "confirmed" };
   });
 }
 

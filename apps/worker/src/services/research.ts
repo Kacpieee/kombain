@@ -3,6 +3,7 @@ import type { Category, DistillFact, ResearchFact, ResearchInput } from "../prom
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
 import type { GenerateFn } from "./llm.js";
 import { parseSynthesisJson } from "./ingestion.js";
+import { buildClaimQuery } from "./search/query.js";
 import { deepseekSearch, serpSearch } from "./search/deepseek.js";
 import type { SearchResult } from "./search/deepseek.js";
 
@@ -79,11 +80,14 @@ export async function researchTopic(input: ResearchInput, deps: ResearchDeps = {
   }
 }
 
-/** Dwie krótkie kwerendy: tytuł oraz kategoria + sygnały faktograficzne (bez treści artykułu). */
-export function buildResearchQueries(input: Pick<ResearchInput, "title" | "category">): string[] {
+/** Dwie krótkie kwerendy: tytuł oraz kategoria + encje/liczby z tytułu i początku tekstu. */
+export function buildResearchQueries(input: Pick<ResearchInput, "title" | "text" | "category">): string[] {
   const title = truncate(input.title, 120);
-  const second = truncate(`${categoryTerms(input.category)} raport dane`, 110);
-  return [title, `${second} after:2025`].filter((query) => query.trim().length > 3);
+  const claimQuery = buildClaimQuery(`${input.title}. ${truncate(input.text, 400)}`);
+  const suffix = " after:2025";
+  const base = truncateAtWord(`${categoryTerms(input.category)} ${claimQuery}`.trim(), 128 - suffix.length);
+  const second = `${base || categoryTerms(input.category)}${suffix}`;
+  return [title, second].filter((query) => query.trim().length > 3);
 }
 
 export function factsFromDistill(facts: DistillFact[], results: SearchResult[]): ResearchFact[] {
@@ -203,6 +207,15 @@ function categoryTerms(category: Category): string {
 
 function truncate(value: string, max: number): string {
   return value.trim().slice(0, max);
+}
+
+/** Cięcie na granicy słowa — nie zostawia urwanego tokenu w zapytaniu. */
+function truncateAtWord(value: string, max: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  const cut = trimmed.slice(0, max);
+  const boundary = cut.lastIndexOf(" ");
+  return (boundary > max * 0.5 ? cut.slice(0, boundary) : cut).trim();
 }
 
 function message(error: unknown): string {

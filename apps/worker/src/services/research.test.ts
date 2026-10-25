@@ -5,7 +5,7 @@ import type { SearchResult } from "./search/deepseek.js";
 
 const INPUT = {
   title: "Drony RTK w sadownictwie",
-  text: "Długi tekst źródłowy",
+  text: "Długi tekst źródłowy o NOAA i wzroście o 20% w 2025 roku.",
   category: "Inteligentne Maszyny i Drony" as const,
 };
 
@@ -39,11 +39,13 @@ function distill(facts: Array<{ claim: string; source_index: number }>): string 
 }
 
 describe("buildResearchQueries", () => {
-  it("buduje dwie krótkie kwerendy (tytuł + kategoria, bez treści artykułu)", () => {
+  it("buduje dwie krótkie kwerendy (tytuł + encje z tekstu/kategoria)", () => {
     const queries = buildResearchQueries(INPUT);
     expect(queries).toHaveLength(2);
     expect(queries[0]).toBe("Drony RTK w sadownictwie");
     expect(queries[1]).toContain("Inteligentne Maszyny i Drony");
+    expect(queries[1]).toContain("NOAA");
+    expect(queries[1]).toContain("2025");
     expect(queries[1]).toContain("after:2025");
     for (const query of queries) expect(query.length).toBeLessThanOrEqual(128);
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { R2Atom } from "../prompts.js";
-import { buildClaimQuery, isRelevantEvidence, verifyExternalAtoms } from "./factcheck.js";
+import { buildClaimQuery, extractClaimEntities, isRelevantEvidence, verifyExternalAtoms } from "./factcheck.js";
 import type { GenerateFn } from "./llm.js";
 import type { SearchResult } from "./search/deepseek.js";
 
@@ -109,6 +109,34 @@ describe("buildClaimQuery / isRelevantEvidence", () => {
 
     for (const entity of ["NOAA", "USDA", "EDA", "2021"]) expect(query).toContain(entity);
     expect(query.length).toBeLessThanOrEqual(128);
+  });
+
+  it("akronim na początku zdania jest encją (NOAA)", () => {
+    const entities = extractClaimEntities("NOAA finansuje infrastrukturę akwakultury.");
+
+    expect(entities.proper).toContain("NOAA");
+  });
+
+  it("ALL-CAPS rzeczownik pospolity nie jest encją (stoplista)", () => {
+    const entities = extractClaimEntities("WZROST sprzedaży dotacji w 2025 roku.", {
+      includeSentenceStart: true,
+    });
+
+    expect(entities.proper).not.toContain("WZROST");
+    expect(entities.numeric).toContain("2025");
+  });
+
+  it("includeSentenceStart widzi nazwę własną na początku, default nie", () => {
+    expect(extractClaimEntities("Kanada importuje owoce morza.").proper).not.toContain("Kanada");
+    expect(
+      extractClaimEntities("Kanada importuje owoce morza.", { includeSentenceStart: true }).proper
+    ).toContain("Kanada");
+  });
+
+  it("POLSKA nie jest stoplistowana (nazwa geograficzna)", () => {
+    expect(
+      extractClaimEntities("POLSKA eksportuje zboże.", { includeSentenceStart: true }).proper
+    ).toContain("POLSKA");
   });
 });
 
@@ -236,6 +264,7 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
         claim: "Firma X ma 40% rynku.",
         verdict: "confirmed",
         evidence_url: "https://example.com/raport",
+        reason: "confirmed",
       });
     }
     expect(search).toHaveBeenCalledTimes(1);
@@ -255,7 +284,12 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     const generate = vi.fn(async () => judge("uncertain", null)) as unknown as GenerateFn;
     const result = await verifyExternalAtoms(ATOMS, { generate, provider: "deepseek", search: async () => results() });
     if (result.status === "ok") {
-      expect(result.result.results[0]).toEqual({ claim: "Firma X ma 40% rynku.", verdict: "uncertain", evidence_url: "" });
+      expect(result.result.results[0]).toEqual({
+        claim: "Firma X ma 40% rynku.",
+        verdict: "uncertain",
+        evidence_url: "",
+        reason: "judge_uncertain",
+      });
     }
   });
 
@@ -271,7 +305,12 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     const result = await verifyExternalAtoms(ATOMS, { generate, provider: "deepseek", search: async () => results() });
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.result.results[0]).toEqual({ claim: "Firma X ma 40% rynku.", verdict: "uncertain", evidence_url: "" });
+      expect(result.result.results[0]).toEqual({
+        claim: "Firma X ma 40% rynku.",
+        verdict: "uncertain",
+        evidence_url: "",
+        reason: "judge_uncertain",
+      });
     }
   });
 
@@ -299,7 +338,7 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     expect(seenModel).toBe("gemini-3.1-flash-lite");
   });
 
-  it("Fetch padnie przy pustych summary → uncertain bez wołania sędziego", async () => {
+  it("Fetch padnie przy pustych summary → SERP ratuje dowód", async () => {
     let judgeCalled = false;
     const generate = vi.fn(async () => {
       judgeCalled = true;
@@ -319,12 +358,13 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.result.results[0]?.verdict).toBe("uncertain");
-      expect(result.stats?.uncertain).toBe(1);
+      expect(result.result.results[0]?.verdict).toBe("confirmed");
+      expect(result.stats?.confirmed).toBe(1);
       expect(result.stats?.fetches).toBe(0);
+      expect(result.stats?.serp).toBe(1);
     }
-    expect(judgeCalled).toBe(false);
-    expect(serp).not.toHaveBeenCalled();
+    expect(judgeCalled).toBe(true);
+    expect(serp).toHaveBeenCalledTimes(1);
   });
 
   it("VERIFY_MAX_ATOMS=\"1\" tnie do jednego atomu", async () => {
@@ -351,6 +391,33 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     }
   });
 
+  it("pusty raw[0] → używa trafnego raw[1], source_index mapuje na relevant[0]", async () => {
+    const search = vi.fn(async () => [
+      { ...results()[0]!, url: "https://empty.example", summary: "", snippet: "", authority: 5 },
+      { ...results()[0]!, url: "https://second.example", summary: "Raport potwierdza 40% udziału firmy X.", authority: 1 },
+    ]);
+    const generate = vi.fn(async () => judge("confirmed", 0)) as unknown as GenerateFn;
+
+    const result = await verifyExternalAtoms(ATOMS, {
+      generate,
+      provider: "deepseek",
+      search,
+      fetchPage: async () => {
+        throw new Error("fetch failed");
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.result.results[0]).toEqual({
+        claim: "Firma X ma 40% rynku.",
+        verdict: "confirmed",
+        evidence_url: "https://second.example",
+        reason: "confirmed",
+      });
+    }
+  });
+
   it("cap atomów: nadmiar → uncertain bez wyszukiwania", async () => {
     const atoms: R2Atom[] = [
       { text: "Fakt pierwszy: 40% rynku.", type: "external", evidence: "" },
@@ -366,6 +433,7 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     if (result.status === "ok") {
       expect(result.result.results).toHaveLength(3);
       expect(result.result.results[2]?.verdict).toBe("uncertain");
+      expect(result.result.results[2]?.reason).toBe("max_atoms_cap");
       expect(result.stats?.confirmed).toBe(2);
       expect(result.stats?.uncertain).toBe(1);
     }
@@ -428,6 +496,7 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.result.results[0]?.verdict).toBe("uncertain");
+      expect(result.result.results[0]?.reason).toBe("no_evidence");
       expect(result.stats?.uncertain).toBe(1);
       expect(result.stats?.serp).toBe(1);
     }
@@ -486,7 +555,26 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     }
   });
 
-  it("search + SERP padają → error (draft)", async () => {
+  it("primary search pada + SERP nietrafny → uncertain z reason search_error (bez naprawy)", async () => {
+    const search = vi.fn(async () => {
+      throw new Error("402");
+    });
+    const serp = vi.fn(async () => [
+      { ...results()[0]!, title: "Sport", summary: "Wyniki meczu.", site_name: "sport.example" },
+    ]);
+    const generate = vi.fn(async () => judge("confirmed", 0)) as unknown as GenerateFn;
+
+    const result = await verifyExternalAtoms(ATOMS, { generate, provider: "deepseek", search, serp });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.result.results[0]?.verdict).toBe("uncertain");
+      expect(result.result.results[0]?.reason).toBe("search_error");
+      expect(result.stats?.serp).toBe(1);
+    }
+  });
+
+  it("search + SERP padają → error search_error z częściowymi stats", async () => {
     const search = vi.fn(async () => {
       throw new Error("402");
     });
@@ -495,6 +583,26 @@ describe("verifyExternalAtoms — deepseek (search + lite judge)", () => {
     });
     const result = await verifyExternalAtoms(ATOMS, { generate: async () => "{}", provider: "deepseek", search, serp });
     expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.code).toBe("search_error");
+      expect(result.stats?.searches).toBe(1);
+    }
+  });
+
+  it("błąd sędziego → error llm_error z częściowymi stats", async () => {
+    const result = await verifyExternalAtoms(ATOMS, {
+      generate: async () => {
+        throw new Error("429");
+      },
+      provider: "deepseek",
+      search: async () => results(),
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.code).toBe("llm_error");
+      expect(result.stats?.searches).toBe(1);
+    }
   });
 
   it("puste summary → Fetch strony, treść trafia do sędziego", async () => {

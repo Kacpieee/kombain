@@ -1,48 +1,44 @@
-# Final report — F3-T1 (Astro Hybrid + Directus + strony)
+# Final report — F2-T10a (Research & Factcheck recall hardening)
 
 ## Status
-Done (Mode: SAFE)
+Done (Mode: CRITICAL)
+
+## Pre-mortem (przed kodem)
+- **UX:** lepsza druga kwerenda researchu może zawęzić brief do encji z tytułu; kategoria zostaje w query jako fallback. Stoplista ALL-CAPS może wyciąć legalny akronim — testy na NOAA/NIFA/POLSKA.
+- **Sync/PG:** brak zmian DDL i zapytań DB; ryzyko ograniczone do typów odpowiedzi R3.
+- **LLM:** `reason` jest wyłącznie w kodzie, nie w schematach Gemini/DeepSeek; model nie może go halucynować. Częściowe `stats` przy błędzie R3 nie zmieniają polityki `draft`.
+- **Pytania TERAZ-vs-KIEDYŚ:** bez zmian DDL; T10b/c pozostają w TERAZ. Brak blokerów.
 
 ## Summary
-`apps/web` to Astro 4 SSR z adapterem `@astrojs/cloudflare`. Strony `/`, `/kategoria/[slug]`, `/artykul/[slug]` i `404` pobierają wyłącznie opublikowane artykuły z Directus REST (read-only token), ustawiają cache brzegowy `public, s-maxage=3600, stale-while-revalidate=86400`, a link „Źródło:” jest doklejany w kodzie z `source_url` (nigdy z LLM).
+Wspólny moduł `services/search/query.ts` obsługuje encje i query dla researchu, factchecku i przyszłego repairu. Research buduje drugą kwerendę z tytułu i początku tekstu, R3 nie gubi `raw[1..4]` przy pustym pierwszym wyniku i zwraca kodowy `reason`, a błąd R3 zachowuje częściowe `verify_*`.
 
 ## Changes
-- `apps/web/astro.config.mjs` — `output: "server"`, `@astrojs/cloudflare`, `site`
-- `apps/web/src/lib/directus.ts` — config z walidacją, auth Bearer, filtry `status=published`, sort `-published_at`, mapowanie kategorii, normalizacja `tldr`/`tech_summary`, `safeSourceUrl` (tylko http/https), `excerpt`, cache headers
-- `apps/web/src/layouts/MainLayout.astro` + `components/{ArticleCard,TldrBox,TechSummaryBox}.astro` — layout, nawigacja 6 działów, karty, TL;DR, Tech summary, responsywny CSS
-- `apps/web/src/pages/{index,404}.astro`, `pages/kategoria/[slug].astro`, `pages/artykul/[slug].astro` — SSR, 404 z `no-store`, cache na sukces
-- `apps/web/src/env.d.ts`, `tsconfig.json`, `.env.example`, `public/favicon.svg`
-- `apps/web/package.json` — `@astrojs/cloudflare@^11.2.0` (Astro 4 peer)
-- `tsconfig.json` — typecheck obejmuje `apps/web/src/**/*.ts`
-- `scripts/verify.sh` — krok 6: `astro build`
-- `deploy/README.md` — §14 Cloudflare Pages (build/output/env/cache/smoke)
-- Testy: `apps/web/src/lib/directus.test.ts` — 15 testów (auth, filtry, 403, slug, normalizacja, źródło, cache, excerpt)
+- `apps/worker/src/services/search/query.ts` — `extractClaimEntities(claim, {includeSentenceStart})`, `buildClaimQuery`, `isAcronym`, `significantWords`, `stem`; stoplista ALL-CAPS rzeczowników (bez POLSKA/EUROPA)
+- `apps/worker/src/services/factcheck.ts` — re-eksport wspólnego query; akronimy na początku zdania; `raw[1..4]` + `fillEvidence` na pierwszym pustym wyniku; `reason` (`search_error`, `no_evidence`, `judge_uncertain`, `max_atoms_cap`, `confirmed`, `refuted`); `FactcheckOutcome` z `code` i częściowymi `stats`
+- `apps/worker/src/services/research.ts` — druga kwerenda z encji tytułu + pierwszych 400 znaków tekstu + kategorii, cięcie na granicy słowa, ≤128
+- `apps/worker/src/services/review.ts` — `ExternalVerdict.reason`; częściowe `verify` przekazywane do draftu przy błędzie R3
+- Testy: factcheck 40 (z 24), research 13; pełny zestaw **307 unit**
+- `docs/plans.md` (T10a usunięte, TERAZ → T10b/T10c), `docs/STATUS.md`
 
 ## Verification (liczbowo)
-- `scripts/verify.sh`: **PASS** (exit 0, w tym `astro build`)
+- `scripts/verify.sh`: **PASS** (exit 0)
 - `tsc --noEmit`: **0 błędów**
-- `vitest`: **300 passed / 0 failed / 33 skipped**
+- `vitest`: **307 passed / 0 failed / 33 skipped**
 - PG (podman, postgres:16): **33 passed**
-- `astro build`: **Complete** (server entrypoints, adapter Cloudflare)
-- Zero sieci w testach: `fetch` mockowany
+- Zero sieci: search/serp/fetch/generate wstrzykiwane
 
 ## Review Loop Audit
-- Liczba rund Reviewera: **1/3 Approve** (weryfikacja E2E na zbudowanym `_worker.js` + mock Directus; mutacje filtra statusu/auth/cache/source URL czerwienieją testy)
+- Liczba rund Reviewera: **1/3 Approve** (mutacje raw[1]/source_index/reason/stoplist/query/stats czerwienieją testy)
 
-## Risks (w tym nieblokujące z review)
-- `set:html` ufa `text_content` z DB — worker sanityzuje, ale ręczna edycja/import w Directusie może wstrzyknąć HTML; brak CSP i nagłówków bezpieczeństwa (kandydat na F3-T2/OPT).
-- Podwójny `Cache-Control: no-store` na 404 (Astro dokłada własny) — kosmetyka.
-- Stale do 1h po unpublish; purge to F3-T2.
-- Listy pobierają pełny `text_content`, by wyciąć 145 znaków — kandydat na osobne pole `summary`/TL;DR.
-- Brak paginacji na `/` i kategoriach.
-- Build ostrzega o niekompatybilnym image service Sharp (dziś nieużywany; F3-T2 wymusi noop/compile).
-- Brak lockfile'a — zależności floating (stan zastany).
-- Nie testowałem stron przeciw żywemu Directusowi; założenie: `category_id` jest zwracane jako UUID, a `categories` dostępne dla tokenu (F1-T2: `articles=200`, `sources=403`).
-- Brak aliasu M2M `tags` — artykuły nie pokazują tagów (OPT w `plans.md`).
-- `Astro.locals.runtime.env` wymaga env w Cloudflare Pages; build-time `import.meta.env` jest fallbackiem dla lokalnego SSR.
-- Brak `og:image` per artykuł i sitemap (poza zakresem F3-T1).
-- Cache czyści się TTL-em; webhook purge to F3-T2.
-- `astro check` nie jest wpięty (wymaga `@astrojs/check`); `.astro` weryfikuje build, nie pełny typecheck frontmattera.
+## Risks
+- Stoplista ALL-CAPS jest heurystyką; `POLSKA`/`EUROPA` celowo poza nią, ale inne akronimy mogą wypaść.
+- `includeSentenceStart` jest przygotowane pod T10c; obecny `buildClaimQuery` nadal pomija zwykłe nazwy własne na początku zdania (świadome).
+- `search_error` przy primary fail + SERP bez trafnych wyników blokuje repair dopiero w T10c; dziś kończy się `uncertain` → draft.
+- `FactcheckOutcome.code` wymaga aktualizacji mocków/testów w T10b/T10c.
+- Brak zmian polityki publikacji w tym tasku.
+- Stoplista ALL-CAPS jest niepełna (np. POPYT/CENY/PLONY nadal mogą przejść jako akronim) — świadoma heurystyka, kandydat na OPT.
+- `fillEvidence` pobiera stronę pierwszego pustego wyniku, nawet gdy `raw[1]` ma już trafne summary — zbędny fetch, nie wpływa na poprawność.
+- `isAcronym` dopuszcza 2 litery, ale regex encji wymaga ≥3 znaków, więc `US`/`EU` nie są encjami (stan sprzed tasku); T10c guard i tak łapie `Canada`/liczby.
 
 ## Next steps
-- F3-T2: `media.kombain.pl`, defaulty kategorii, webhook purge cache.
+- F2-T10b: feedback plumbing, sync `content_html`, `VERIFY_MAX_ATOMS` z configu, dry-run `verify_*`, `--url` dedup bypass.

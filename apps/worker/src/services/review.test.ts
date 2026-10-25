@@ -415,6 +415,7 @@ describe("reviewArticle — R1/R2/R3", () => {
 
     expect(result.status).toBe("published");
     expect(result.external[0]?.verdict).toBe("confirmed");
+    expect(result.external[0]?.reason).toBe("confirmed");
     expect(result.verify).toEqual({ searches: 1, serp: 0, fetches: 0, confirmed: 1, refuted: 0, uncertain: 0 });
   });
 
@@ -449,11 +450,17 @@ describe("reviewArticle — R1/R2/R3", () => {
     const result = await reviewArticle(ARTICLE, "źródło", {
       runR1: async () => ({ pass: true, issues: [] }),
       runR2: async () => [{ text: "Fakt zewnętrzny.", type: "external", evidence: "" }],
-      verifyExternal: async () => ({ status: "error", error: "429 quota" }),
+      verifyExternal: async () => ({
+        status: "error",
+        code: "llm_error",
+        error: "429 quota",
+        stats: { searches: 1, serp: 0, fetches: 0, confirmed: 0, refuted: 0, uncertain: 0 },
+      }),
     });
 
     expect(result.status).toBe("draft");
     expect(result.stage).toBe("R3");
+    expect(result.verify?.searches).toBe(1);
   });
 
   it("lokalny fail R1 + regenerate naprawia → published (retry obowiązuje też dla meta)", async () => {
