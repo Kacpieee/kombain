@@ -306,17 +306,64 @@ describe("runOnce", () => {
         via: "direct",
       })
     );
+    const events: Array<Record<string, unknown>> = [];
 
     const report = await runOnce(POOL, CONFIG, {
       loadSources: async () => [SOURCES[0]!],
       ingest,
       process,
       dryRun: true,
-      log: () => {},
+      log: (event) => events.push(event),
     });
 
     expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
     expect(report.dry_run).toBe(1);
+  });
+
+  it("dry_run loguje etap i powody review (diagnostyka draftu)", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const events: Array<Record<string, unknown>> = [];
+
+    await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(
+        async (): Promise<ArticleOutcome> => ({
+          status: "dry_run",
+          wouldBe: "draft",
+          via: "direct",
+          review: {
+            status: "draft",
+            needsHumanCheck: true,
+            stage: "R3",
+            issues: ["uncertain: firma X ma 40% rynku"],
+            cleanedHtml: "<p>x</p>",
+            removedInferences: [],
+            external: [],
+            article: {
+              title: "T",
+              content_html: "<p>x</p>",
+              tldr: ["a", "b", "c"],
+              tags: ["t"],
+              tech_summary: { podmiot: "p", technologia: "t", cel_wdrozenia: "c" },
+              slug: "t",
+              external_refs: [],
+            },
+          },
+        })
+      ),
+      dryRun: true,
+      log: (event) => events.push(event),
+    });
+
+    const dry = events.find((event) => event.event === "dry_run");
+    expect(dry).toMatchObject({ wouldBe: "draft", stage: "R3", needsHumanCheck: true });
+    expect(dry?.issues).toEqual(["uncertain: firma X ma 40% rynku"]);
   });
 
   it("backoff: link po 3 próbach jest pomijany bez pipeline", async () => {

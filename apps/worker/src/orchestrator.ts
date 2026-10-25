@@ -222,7 +222,15 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
         }
 
         if (outcome.status === "dry_run") {
-          emit({ event: "dry_run", wouldBe: outcome.wouldBe, sourceUrl: candidate.sourceUrl, reason: outcome.reason });
+          emit({
+            event: "dry_run",
+            wouldBe: outcome.wouldBe,
+            sourceUrl: candidate.sourceUrl,
+            reason: outcome.reason,
+            stage: outcome.review?.stage ?? null,
+            needsHumanCheck: outcome.review?.needsHumanCheck ?? false,
+            issues: outcome.review?.issues ?? [],
+          });
         } else if (outcome.status === "dropped") {
           emit({ event: "dropped", reason: outcome.reason, sourceUrl: candidate.sourceUrl });
         } else {

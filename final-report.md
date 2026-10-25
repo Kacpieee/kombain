@@ -52,3 +52,7 @@ Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumow
 
 ## Next steps
 - F3-T1: Astro Hybrid + `directus.ts` + `/`, `/kategoria/[slug]`, `/artykul/[slug]` + cache headers.
+
+## Hotfix (po pierwszym dry-run na VPS)
+
+`dry_run` w JSONL zawiera teraz `stage`, `needsHumanCheck` i `issues` z review — bez tego nie dało się ustalić, dlaczego artykuł kończy się draftem. Test regresyjny w `orchestrator.test.ts`; `verify.sh` exit 0, Reviewer Approve.
