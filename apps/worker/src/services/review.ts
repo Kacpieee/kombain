@@ -5,7 +5,7 @@ import {
   buildR1Prompt,
   buildR2Prompt,
 } from "../prompts.js";
-import type { EditorOut, R1Decision, R2Atom, ResearchFact } from "../prompts.js";
+import type { EditorOut, R1Decision, R2Atom, RepairIssue, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
 import type { FactcheckOutcome, VerifyReason, VerifyStats } from "./factcheck.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
@@ -53,10 +53,12 @@ export interface ReviewDeps {
   /** Fakty z researchu — atomy pokryte briefem nie idą do R3. */
   researchBrief?: ResearchFact[];
   /** Jednorazowy retry Redaktora po failu R1 (AGENTS §2.7). */
-  regenerate?: (issues: string[]) => Promise<EditorOut>;
+  regenerate?: (issues: string[], previousArticle: EditorOut) => Promise<EditorOut>;
   runR1?: (article: EditorOut) => Promise<R1Decision>;
   runR2?: (article: EditorOut, sourceText: string) => Promise<R2Atom[]>;
   verifyExternal?: (atoms: R2Atom[]) => Promise<FactcheckOutcome>;
+  /** Limit atomów R3 z AppConfig (jedno źródło prawdy). */
+  verifyMaxAtoms?: number;
 }
 
 export interface ReviewOutcome {
@@ -64,6 +66,7 @@ export interface ReviewOutcome {
   needsHumanCheck: boolean;
   stage: "R1" | "R2" | "R3" | null;
   issues: string[];
+  repairIssues?: RepairIssue[];
   cleanedHtml: string;
   removedInferences: string[];
   external: ExternalVerdict[];
@@ -343,10 +346,14 @@ export async function reviewArticle(
       R2Schema.parse(
         parseSynthesisJson(await generate({ model, prompt: buildR2Prompt(article, text), responseSchema: R2_RESPONSE_SCHEMA }))
       ).atoms);
-  const verify = deps.verifyExternal ?? ((atoms: R2Atom[]) => verifyExternalAtoms(atoms, { generate, model }));
+  const verify =
+    deps.verifyExternal ??
+    ((atoms: R2Atom[]) =>
+      verifyExternalAtoms(atoms, { generate, model, maxAtoms: deps.verifyMaxAtoms }));
 
   let article = articleIn;
   let cleanedHtml = sanitizeEditorHtml(article.content_html);
+  article = { ...article, content_html: cleanedHtml };
   let retried = false;
 
   // R1: lokalny meta-check + LLM. Dokładnie jeden retry Redaktora (AGENTS §2.7).
@@ -355,11 +362,12 @@ export async function reviewArticle(
     if (!deps.regenerate) return draft("R1", local.issues, article, cleanedHtml);
 
     retried = true;
-    const regenerated = await runRegenerate(deps.regenerate, local.issues);
+    const regenerated = await runRegenerate(deps.regenerate, local.issues, article);
     if (!regenerated.ok) return draft("R1", [regenerated.error], article, cleanedHtml);
 
     article = regenerated.article;
     cleanedHtml = sanitizeEditorHtml(article.content_html);
+    article = { ...article, content_html: cleanedHtml };
     const localRetry = validateTechnical(article);
     if (!localRetry.pass) return draft("R1", localRetry.issues, article, cleanedHtml);
   }
@@ -367,11 +375,12 @@ export async function reviewArticle(
   let r1 = await safeR1(runR1, article);
   if (!r1.pass && deps.regenerate && !retried) {
     retried = true;
-    const regenerated = await runRegenerate(deps.regenerate, r1.issues);
+    const regenerated = await runRegenerate(deps.regenerate, r1.issues, article);
     if (!regenerated.ok) return draft("R1", [regenerated.error], article, cleanedHtml);
 
     article = regenerated.article;
     cleanedHtml = sanitizeEditorHtml(article.content_html);
+    article = { ...article, content_html: cleanedHtml };
     const localRetry = validateTechnical(article);
     if (!localRetry.pass) return draft("R1", localRetry.issues, article, cleanedHtml);
 
@@ -392,6 +401,7 @@ export async function reviewArticle(
   if (inferences.length > 0) {
     const stripped = stripInferences(cleanedHtml, inferences, atoms);
     cleanedHtml = stripped.html;
+    article = { ...article, content_html: cleanedHtml };
     removedInferences = stripped.removed;
     if (stripped.missed.length > 0) {
       const samples = stripped.missed
@@ -404,7 +414,14 @@ export async function reviewArticle(
         [`Nie udało się wyciąć ${stripped.missed.length} wniosków bez dowodu: ${samples}${suffix}`],
         article,
         cleanedHtml,
-        { removedInferences }
+        {
+          removedInferences,
+          repairIssues: stripped.missed.map((text) => ({
+            stage: "R2",
+            claim: text,
+            verdict: "inference_missed",
+          })),
+        }
       );
     }
   }
@@ -432,21 +449,38 @@ export async function reviewArticle(
     verifyStats = factcheck.stats;
 
     const refuted = external.filter((item) => item.verdict === "refuted");
-    if (refuted.length > 0) {
-      return draft("R3", refuted.map((item) => `refuted: ${item.claim}`), article, cleanedHtml, {
-        removedInferences,
-        external,
-        verify: verifyStats,
-      });
-    }
-
     const uncertain = external.filter((item) => item.verdict === "uncertain");
-    if (uncertain.length > 0) {
-      return draft("R3", uncertain.map((item) => `uncertain: ${item.claim}`), article, cleanedHtml, {
+    if (refuted.length > 0 || uncertain.length > 0) {
+      const issues = [
+        ...refuted.map((item) => {
+          const url = item.evidence_url ? ` (${item.evidence_url})` : "";
+          return `refuted: ${item.claim}${url}`;
+        }),
+        ...uncertain.map((item) => `uncertain: ${item.claim}`),
+      ];
+      const repairIssues: RepairIssue[] = [
+        ...refuted.map((item) => ({
+          stage: "R3" as const,
+          claim: item.claim,
+          verdict: "refuted" as const,
+          evidence_url: item.evidence_url,
+          reason: item.reason,
+        })),
+        ...uncertain.map((item) => ({
+          stage: "R3" as const,
+          claim: item.claim,
+          verdict: "uncertain" as const,
+          evidence_url: item.evidence_url,
+          reason: item.reason,
+        })),
+      ];
+
+      return draft("R3", issues, article, cleanedHtml, {
         removedInferences,
         external,
         verify: verifyStats,
-        needsHumanCheck: true,
+        repairIssues,
+        needsHumanCheck: uncertain.length > 0,
       });
     }
   }
@@ -456,6 +490,7 @@ export async function reviewArticle(
     needsHumanCheck: false,
     stage: null,
     issues: [],
+    repairIssues: [],
     cleanedHtml,
     removedInferences,
     external,
@@ -527,11 +562,12 @@ function normalizeClaim(value: string): string {
 }
 
 async function runRegenerate(
-  regenerate: (issues: string[]) => Promise<EditorOut>,
-  issues: string[]
+  regenerate: (issues: string[], previousArticle: EditorOut) => Promise<EditorOut>,
+  issues: string[],
+  previousArticle: EditorOut
 ): Promise<{ ok: true; article: EditorOut } | { ok: false; error: string }> {
   try {
-    return { ok: true, article: await regenerate(issues) };
+    return { ok: true, article: await regenerate(issues, previousArticle) };
   } catch (error) {
     return { ok: false, error: formatLlmError(error, "Redaktora") };
   }
@@ -550,13 +586,16 @@ function draft(
   issues: string[],
   article: EditorOut,
   cleanedHtml: string,
-  extra: Partial<Pick<ReviewOutcome, "needsHumanCheck" | "removedInferences" | "external" | "verify">> = {}
+  extra: Partial<
+    Pick<ReviewOutcome, "needsHumanCheck" | "removedInferences" | "external" | "verify" | "repairIssues">
+  > = {}
 ): ReviewOutcome {
   return {
     status: "draft",
     needsHumanCheck: extra.needsHumanCheck ?? false,
     stage,
     issues,
+    repairIssues: extra.repairIssues ?? [],
     cleanedHtml,
     removedInferences: extra.removedInferences ?? [],
     external: extra.external ?? [],

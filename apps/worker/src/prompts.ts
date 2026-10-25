@@ -71,6 +71,22 @@ export const ResearchSchema = z.object({ facts: z.array(ResearchFactSchema) });
 export type ResearchFact = z.infer<typeof ResearchFactSchema>;
 export type ResearchInput = { title: string; text: string; category: Category };
 
+export type RepairStage = "R1" | "R2" | "R3";
+export type RepairVerdict = "refuted" | "uncertain" | "inference_missed" | "technical";
+
+export interface RepairIssue {
+  stage: RepairStage;
+  claim: string;
+  verdict: RepairVerdict;
+  evidence_url?: string;
+  reason?: string;
+}
+
+export interface EditorFeedback {
+  previousArticle: EditorOut;
+  issues: RepairIssue[];
+}
+
 export const JudgeSchema = z.object({
   results: z.array(
     z.object({
@@ -222,6 +238,7 @@ export interface EditorPromptInput {
   originalTitle: string;
   articleText: string;
   researchBrief?: ResearchFact[];
+  feedback?: EditorFeedback;
 }
 
 /** Redaktor: 1 szablon × persona działu (Dokumentacja §4.2). Link źródła dokleja kod, nie model. */
@@ -240,7 +257,7 @@ USTALONE FAKTY (research; jedyne dozwolone fakty spoza źródła — każdy z UR
 ${researchSection(input.researchBrief)}
 
 TWARDA ZASADA: nie wolno wprowadzać żadnych faktów (liczb, dat, nazw firm/osób, regulacji) spoza tekstu źródłowego i sekcji USTALONE FAKTY. Jeśli brakuje danych — pisz ogólnie, bez wymyślania.
-
+${feedbackSection(input.feedback)}
 WYTYCZNE TREŚCIOWE (klucz 'content_html'):
 1. Wstęp z hookiem: 3-5 zdań otwierających z mocnym haczykiem (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.
 2. Struktura HTML: używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <em>, <ul>, <ol>, <li>. Samodzielnie zbuduj logiczną architekturę nagłówków.
@@ -263,6 +280,53 @@ Zwróć wyłącznie JSON z kluczami: title, content_html, tldr, tags, tech_summa
 function researchSection(facts: ResearchFact[] | undefined): string {
   if (!facts || facts.length === 0) return "(brak — nie dodawaj faktów spoza tekstu źródłowego)";
   return facts.map((fact) => `- ${fact.claim} (${fact.url})`).join("\n");
+}
+
+function feedbackSection(feedback: EditorFeedback | undefined): string {
+  if (!feedback) return "";
+
+  const issues = feedback.issues
+    .slice(0, 12)
+    .map((issue) => {
+      const url = safeEvidenceUrl(issue.evidence_url);
+      const suffix = url ? ` — dowód: ${url}` : "";
+      return `- [${issue.stage}/${issue.verdict}] ${issue.claim.slice(0, 500)}${suffix}`;
+    })
+    .join("\n");
+  const previous = {
+    ...feedback.previousArticle,
+    content_html: truncateHtml(feedback.previousArticle.content_html, 8000),
+  };
+
+  return `
+TRYB POPRAWY (POPRZEDNIA WERSJA I UWAGI REVIEWERA):
+Poprzednia wersja artykułu (JSON):
+${JSON.stringify(previous)}
+
+Zakwestionowane fragmenty:
+${issues || "(brak)"}
+
+Usuń lub oprzyj wyłącznie na TEKŚCIE ŹRÓDŁOWYM i USTALONYCH FAKTACH wszystkie zakwestionowane fragmenty. Nie dodawaj żadnych nowych faktów, liczb, dat ani nazw własnych. Zachowaj pozostałe akapity i strukturę HTML. Zwróć pełny JSON w tym samym formacie.
+`;
+}
+
+/** Cięcie HTML na granicy bloku — nigdy w środku tagu. */
+function truncateHtml(html: string, max: number): string {
+  if (html.length <= max) return html;
+  const cut = html.slice(0, max);
+  const closers = ["</p>", "</h2>", "</h3>", "</ul>", "</ol>"];
+  let boundary = 0;
+  for (const closer of closers) {
+    const index = cut.lastIndexOf(closer);
+    if (index >= 0) boundary = Math.max(boundary, index + closer.length);
+  }
+  return boundary > 0 ? cut.slice(0, boundary) : cut.replace(/<[^>]*$/, "").trimEnd();
+}
+
+function safeEvidenceUrl(value: string | undefined): string {
+  const candidate = (value ?? "").trim();
+  if (!candidate || !/^https?:\/\/[^\s]+$/i.test(candidate)) return "";
+  return candidate.slice(0, 200);
 }
 
 /** R1 technical: HTML/meta/struktura, bez wyszukiwania w sieci. */

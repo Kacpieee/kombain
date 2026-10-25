@@ -200,11 +200,15 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
 
         let outcome: ArticleOutcome;
         try {
-          outcome = await process(
-            db,
-            candidate,
-            options.dryRun ? { persist: false } : { notify: options.notify }
-          );
+          const pipelineOptions = options.dryRun
+            ? {
+                persist: false,
+                verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS,
+                ...(options.url ? { skipDuplicateCheck: true } : {}),
+              }
+            : { notify: options.notify, verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS };
+
+          outcome = await process(db, candidate, pipelineOptions);
         } catch (error) {
           outcome = {
             status: "error",
@@ -304,6 +308,7 @@ function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
     case "dry_run":
       report.dry_run += 1;
       if (outcome.via === "scrapingant") report.fallback_used += 1;
+      countVerify(report, outcome.review?.verify);
       break;
   }
 }

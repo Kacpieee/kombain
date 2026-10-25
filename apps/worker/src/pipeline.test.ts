@@ -209,12 +209,12 @@ describe("processArticle — ścieżki", () => {
     expect(result).toEqual({ status: "dropped", reason: "rejected_exists" });
   });
 
-  it("przekazuje regenerate do review (retry Redaktora)", async () => {
+  it("przekazuje regenerate do review (retry Redaktora z feedbackiem)", async () => {
     let retried = 0;
     const deps = base();
     deps.review = vi.fn(async (_article, _text, options) => {
       if (!options?.regenerate) throw new Error("brak regenerate");
-      const rebuilt = await options.regenerate(["popraw tytuł"]);
+      const rebuilt = await options.regenerate(["popraw tytuł"], ARTICLE);
       expect(rebuilt).toBe(ARTICLE);
       retried += 1;
       return {
@@ -233,6 +233,30 @@ describe("processArticle — ścieżki", () => {
     expect(result.status).toBe("published");
     expect(retried).toBe(1);
     expect(deps.synthesize).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(deps.synthesize!).mock.calls[1]?.[0]).toMatchObject({
+      feedback: {
+        previousArticle: ARTICLE,
+        issues: [{ stage: "R1", claim: "popraw tytuł", verdict: "technical" }],
+      },
+    });
+  });
+
+  it("skipDuplicateCheck pozwala przepuścić URL już zapisany w DB", async () => {
+    const deps = base({ duplicateCheck: vi.fn(async () => true), skipDuplicateCheck: true });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result.status).toBe("published");
+    expect(deps.duplicateCheck).not.toHaveBeenCalled();
+    expect(deps.save).toHaveBeenCalled();
+  });
+
+  it("przekazuje verifyMaxAtoms do review", async () => {
+    const reviewSpy = vi.fn(base().review!);
+    const deps = base({ review: reviewSpy, verifyMaxAtoms: 3 });
+
+    await processArticle(POOL, CANDIDATE, deps);
+
+    expect(reviewSpy.mock.calls[0]?.[2]).toMatchObject({ verifyMaxAtoms: 3 });
   });
 
   it("przenosi statystyki verify z review do wyniku", async () => {

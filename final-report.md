@@ -1,44 +1,41 @@
-# Final report — F2-T10a (Research & Factcheck recall hardening)
+# Final report — F2-T10b (Feedback plumbing, sync HTML, diagnostyka)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Pre-mortem (przed kodem)
-- **UX:** lepsza druga kwerenda researchu może zawęzić brief do encji z tytułu; kategoria zostaje w query jako fallback. Stoplista ALL-CAPS może wyciąć legalny akronim — testy na NOAA/NIFA/POLSKA.
-- **Sync/PG:** brak zmian DDL i zapytań DB; ryzyko ograniczone do typów odpowiedzi R3.
-- **LLM:** `reason` jest wyłącznie w kodzie, nie w schematach Gemini/DeepSeek; model nie może go halucynować. Częściowe `stats` przy błędzie R3 nie zmieniają polityki `draft`.
-- **Pytania TERAZ-vs-KIEDYŚ:** bez zmian DDL; T10b/c pozostają w TERAZ. Brak blokerów.
+- **UX:** feedback do Redaktora może wydłużyć prompt; `content_html` jest cięty do 8000 znaków na granicy bloku, a `evidence_url` tylko http(s) ≤200 znaków. Bez zmiany polityki publikacji.
+- **Sync/PG:** bez DDL; `article.content_html` jest synchronizowane z `cleanedHtml`, żeby przyszły repair nie przywracał wyciętych wniosków.
+- **LLM:** `RepairIssue`/`EditorFeedback` są kontraktem promptu, nie schematem odpowiedzi; model nadal zwraca ten sam JSON. Brak nowych wywołań LLM w tym tasku.
+- **Pytania TERAZ-vs-KIEDYŚ:** `REPAIR_MAX_ATTEMPTS` i pętla pozostają w F2-T10c; tutaj tylko plumbing.
 
 ## Summary
-Wspólny moduł `services/search/query.ts` obsługuje encje i query dla researchu, factchecku i przyszłego repairu. Research buduje drugą kwerendę z tytułu i początku tekstu, R3 nie gubi `raw[1..4]` przy pustym pierwszym wyniku i zwraca kodowy `reason`, a błąd R3 zachowuje częściowe `verify_*`.
+Redaktor dostaje realny feedback (issues + poprzednia wersja) zarówno przy retry R1, jak i pod przyszły repair. `ReviewOutcome` zawiera pełną listę `refuted`/`uncertain` z URL oraz strukturalne `repairIssues`. `VERIFY_MAX_ATOMS` płynie z configu, dry-run zlicza `verify_*`, a `--dry-run --url` omija dedup URL, żeby można było diagnozować istniejące drafty.
 
 ## Changes
-- `apps/worker/src/services/search/query.ts` — `extractClaimEntities(claim, {includeSentenceStart})`, `buildClaimQuery`, `isAcronym`, `significantWords`, `stem`; stoplista ALL-CAPS rzeczowników (bez POLSKA/EUROPA)
-- `apps/worker/src/services/factcheck.ts` — re-eksport wspólnego query; akronimy na początku zdania; `raw[1..4]` + `fillEvidence` na pierwszym pustym wyniku; `reason` (`search_error`, `no_evidence`, `judge_uncertain`, `max_atoms_cap`, `confirmed`, `refuted`); `FactcheckOutcome` z `code` i częściowymi `stats`
-- `apps/worker/src/services/research.ts` — druga kwerenda z encji tytułu + pierwszych 400 znaków tekstu + kategorii, cięcie na granicy słowa, ≤128
-- `apps/worker/src/services/review.ts` — `ExternalVerdict.reason`; częściowe `verify` przekazywane do draftu przy błędzie R3
-- Testy: factcheck 40 (z 24), research 13; pełny zestaw **307 unit**
-- `docs/plans.md` (T10a usunięte, TERAZ → T10b/T10c), `docs/STATUS.md`
+- `apps/worker/src/prompts.ts` — `RepairIssue`, `EditorFeedback`, `EditorPromptInput.feedback`; sekcja `TRYB POPRAWY` z poprzednim JSON-em, cięcie HTML po blokach (8000), sanityzacja `evidence_url`
+- `apps/worker/src/services/review.ts` — `ReviewDeps.regenerate(issues, previousArticle)`, `ReviewDeps.verifyMaxAtoms`, `ReviewOutcome.repairIssues`; sync `content_html` po sanityzacji i strip; pełne `issues` (refuted + URL, uncertain); `needsHumanCheck` dla mieszanki refuted+uncertain
+- `apps/worker/src/pipeline.ts` — `verifyMaxAtoms`, `skipDuplicateCheck`; `regenerate` przekazuje `EditorFeedback` do `synthesize`
+- `apps/worker/src/orchestrator.ts` — `verifyMaxAtoms` z configu, `skipDuplicateCheck` dla `--dry-run --url`, `countVerify` dla `dry_run`
+- Testy: review 57 (z 50) + `review.verify-max` 1, pipeline 25, orchestrator 28; pełny zestaw **319 unit**
+- `docs/plans.md` (T10b usunięte, TERAZ → T10c), `docs/STATUS.md`
 
 ## Verification (liczbowo)
 - `scripts/verify.sh`: **PASS** (exit 0)
 - `tsc --noEmit`: **0 błędów**
-- `vitest`: **307 passed / 0 failed / 33 skipped**
+- `vitest`: **319 passed / 0 failed / 33 skipped**
 - PG (podman, postgres:16): **33 passed**
-- Zero sieci: search/serp/fetch/generate wstrzykiwane
+- Zero sieci w testach
 
 ## Review Loop Audit
-- Liczba rund Reviewera: **1/3 Approve** (mutacje raw[1]/source_index/reason/stoplist/query/stats czerwienieją testy)
+- Liczba rund Reviewera: 1/3 Request changes (truncateHtml/testy) → poprawki → **2/3 Approve**
 
 ## Risks
-- Stoplista ALL-CAPS jest heurystyką; `POLSKA`/`EUROPA` celowo poza nią, ale inne akronimy mogą wypaść.
-- `includeSentenceStart` jest przygotowane pod T10c; obecny `buildClaimQuery` nadal pomija zwykłe nazwy własne na początku zdania (świadome).
-- `search_error` przy primary fail + SERP bez trafnych wyników blokuje repair dopiero w T10c; dziś kończy się `uncertain` → draft.
-- `FactcheckOutcome.code` wymaga aktualizacji mocków/testów w T10b/T10c.
-- Brak zmian polityki publikacji w tym tasku.
-- Stoplista ALL-CAPS jest niepełna (np. POPYT/CENY/PLONY nadal mogą przejść jako akronim) — świadoma heurystyka, kandydat na OPT.
-- `fillEvidence` pobiera stronę pierwszego pustego wyniku, nawet gdy `raw[1]` ma już trafne summary — zbędny fetch, nie wpływa na poprawność.
-- `isAcronym` dopuszcza 2 litery, ale regex encji wymaga ≥3 znaków, więc `US`/`EU` nie są encjami (stan sprzed tasku); T10c guard i tak łapie `Canada`/liczby.
+- `ReviewOutcome.repairIssues` jest opcjonalne (kompatybilność z mockami); T10c musi używać `?? []`.
+- Feedback zawiera poprzedni artykuł w JSON; przy bardzo długich artykułach prompt rośnie, ale `content_html` jest cięty.
+- `truncateHtml` przy jednym ogromnym bloku bez closera zwraca ~8000 znaków bez domknięcia tagu; testy pokrywają fallback i cięcie po `</p>` z górnym limitem.
+- `checkUrlDuplicate` nadal blokuje realny `run --url` dla istniejącego draftu; poza dry-runem retry draftu wymaga obejścia — kandydat na T10c/OPT.
+- Bez zmian polityki publikacji — repair loop dopiero w T10c.
 
 ## Next steps
-- F2-T10b: feedback plumbing, sync `content_html`, `VERIFY_MAX_ATOMS` z configu, dry-run `verify_*`, `--url` dedup bypass.
+- F2-T10c: bounded repair loop, `REPAIR_MAX_ATTEMPTS`, guardy encji/długości, metryki `repair_*`, AGENTS §2.7–2.8.

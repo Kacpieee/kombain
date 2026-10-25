@@ -16,13 +16,13 @@
 - F2-T7b: obserwowalność — Telegram (jedno podsumowanie/run + ALERT przy `errors>=3`/wszystkich źródłach/soft timeout), healthchecks start/success/fail, `worker_fatal` z alertem, twardy timeout 30 min w cronie, `MAX_PROCESSED_PER_RUN` + soft deadline, `article_failures` (backoff 3 próby/7 dni) + migracja; 211 unit + 33 PG
 - F2-T9b: R3 recall tuning — query builder (encje/liczby/rok, granica słowa), bramka trafności + SERP fallback, warunkowy Fetch dla search i SERP, metryki `verify_*` w `run_summary`, `VERIFY_MAX_ATOMS`; 285 unit + 33 PG, Reviewer 4/3 Approve
 - F2-T10a: research/factcheck recall hardening — wspólny `search/query.ts` (encje, stoplista ALL-CAPS, akronimy na początku zdania), druga kwerenda researchu z encji tytułu/tekstu, `raw[1..4]` + mapowanie `source_index`, `reason` w kodzie (`search_error`/`no_evidence`/`max_atoms_cap`/`judge_uncertain`), częściowe `verify_*` przy błędzie R3; 307 unit + 33 PG
+- F2-T10b: feedback plumbing — `RepairIssue`/`EditorFeedback` w promptcie Redaktora (poprzedni JSON, issues, bezpieczny evidence_url, cięcie HTML po blokach), R1 `regenerate(issues, previousArticle)`, sync `article.content_html` po sanityzacji i `stripInferences`, pełne `issues` (`refuted` + URL + `uncertain`), `repairIssues`, `verifyMaxAtoms` z configu, `verify_*` w dry-run, `skipDuplicateCheck` dla `--dry-run --url`; 319 unit + 33 PG
 - F3-T1: `apps/web` Astro SSR + `@astrojs/cloudflare` — `/`, `/kategoria/[slug]`, `/artykul/[slug]`, `404`, `directus.ts` (read-only, filtry, cache `s-maxage=3600`), layout/karty/TL;DR/Tech summary, link „Źródło:” z kodu; 300 unit + 33 PG, `astro build` w verify
 
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
-- F2-T10b: feedback plumbing + sync HTML + diagnostyka
 - F2-T10c: bounded repair loop + guardy
 - OPS (VPS): wdrożenie F2-T9b + F2-T10a/b/c + dry-run i pomiar
 - F3-T2 `media.kombain.pl` + defaulty kategorii + webhook

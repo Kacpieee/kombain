@@ -43,6 +43,10 @@ export interface PipelineOverrides {
   /** Alert (np. research fallback) — wstrzykiwany przez orchestrator. */
   notify?: (text: string) => Promise<unknown>;
   duplicateCheck?: (link: string) => Promise<boolean>;
+  /** Diagnostyka `--dry-run --url`: pozwala przetworzyć URL już zapisany w DB. */
+  skipDuplicateCheck?: boolean;
+  /** Limit atomów R3 z AppConfig. */
+  verifyMaxAtoms?: number;
   scrape?: typeof scrapeArticle;
   history?: typeof fetchHistoricalContext30d;
   classify?: typeof classifyArticle;
@@ -74,7 +78,7 @@ export async function processArticle(
   const save = overrides.save ?? saveArticle;
   const reject = overrides.reject ?? rejectArticle;
 
-  if (await duplicateCheck(candidate.sourceUrl)) {
+  if (!overrides.skipDuplicateCheck && (await duplicateCheck(candidate.sourceUrl))) {
     return { status: "dropped", reason: "url_duplicate" };
   }
 
@@ -167,8 +171,15 @@ export async function processArticle(
 
   const reviewed = await review(edited.article, scraped.article.text, {
     researchBrief: researchFacts,
-    regenerate: async (issues: string[]): Promise<EditorOut> => {
-      const retry = await synthesize(editorInput);
+    verifyMaxAtoms: overrides.verifyMaxAtoms,
+    regenerate: async (issues: string[], previousArticle: EditorOut): Promise<EditorOut> => {
+      const retry = await synthesize({
+        ...editorInput,
+        feedback: {
+          previousArticle,
+          issues: issues.map((issue) => ({ stage: "R1", claim: issue, verdict: "technical" })),
+        },
+      });
       if (retry.status === "error") throw new Error(`Retry Redaktora nieudany (${issues.length} uwag): ${retry.error}`);
       return retry.article;
     },

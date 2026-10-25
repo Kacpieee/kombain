@@ -222,7 +222,13 @@ describe("runOnce", () => {
 
   it("--url: pomija źródła i przetwarza pojedynczy link", async () => {
     const loadSources = vi.fn(async () => SOURCES);
-    const process = vi.fn(async (_pool: Pool, _candidate: RawArticleCandidate) => published());
+    const process = vi.fn(
+      async (
+        _pool: Pool,
+        _candidate: RawArticleCandidate,
+        _options?: { notify?: unknown; verifyMaxAtoms?: number; skipDuplicateCheck?: boolean }
+      ) => published()
+    );
 
     const report = await runOnce(POOL, CONFIG, {
       loadSources,
@@ -234,6 +240,7 @@ describe("runOnce", () => {
     expect(loadSources).not.toHaveBeenCalled();
     expect(process).toHaveBeenCalledTimes(1);
     expect(process.mock.calls[0]?.[1]).toMatchObject({ sourceUrl: "https://example.com/jeden", sourceId: null });
+    expect(process.mock.calls[0]?.[2]).not.toHaveProperty("skipDuplicateCheck");
     expect(report.links).toBe(1);
   });
 
@@ -321,8 +328,66 @@ describe("runOnce", () => {
       log: (event) => events.push(event),
     });
 
-    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
     expect(report.dry_run).toBe(1);
+  });
+
+  it("dry-run --url przekazuje skipDuplicateCheck", async () => {
+    const process = vi.fn(
+      async (
+        _pool: Pool,
+        _candidate: RawArticleCandidate,
+        _options?: { persist?: boolean; skipDuplicateCheck?: boolean }
+      ): Promise<ArticleOutcome> => ({
+        status: "dry_run",
+        wouldBe: "draft",
+        via: "direct",
+      })
+    );
+
+    await runOnce(POOL, CONFIG, {
+      url: "https://example.com/jeden",
+      process,
+      dryRun: true,
+      log: () => {},
+    });
+
+    expect(process.mock.calls[0]?.[2]).toMatchObject({ persist: false, skipDuplicateCheck: true });
+  });
+
+  it("dry_run zlicza verify_* z review", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (): Promise<ArticleOutcome> =>
+        ({
+          status: "dry_run",
+          wouldBe: "draft",
+          via: "direct",
+          review: {
+            verify: { searches: 2, serp: 1, fetches: 0, confirmed: 0, refuted: 1, uncertain: 1 },
+          },
+        }) as unknown as ArticleOutcome
+    );
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      dryRun: true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      dry_run: 1,
+      verify_refuted: 1,
+      verify_uncertain: 1,
+      verify_serp_used: 1,
+    });
   });
 
   it("dry_run loguje etap i powody review (diagnostyka draftu)", async () => {
@@ -469,11 +534,11 @@ describe("runOnce", () => {
     };
 
     await runOnce(POOL, CONFIG, infra);
-    expect(process.mock.calls[0]?.[2]).toEqual({ notify });
+    expect(process.mock.calls[0]?.[2]).toEqual({ notify, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
 
     process.mockClear();
     await runOnce(POOL, CONFIG, { ...infra, dryRun: true });
-    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
   });
 
   it("backoff: link po 3 próbach jest pomijany bez pipeline", async () => {

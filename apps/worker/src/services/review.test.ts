@@ -102,6 +102,71 @@ describe("buildEditorPrompt", () => {
       expect(prompt).not.toContain("[WPISZ");
     }
   });
+
+  it("tryb poprawy wstrzykuje poprzedni artykuł, issue i tylko bezpieczny URL dowodu", () => {
+    const prompt = buildEditorPrompt({
+      category: "Agroenergetyka",
+      originalTitle: "T",
+      articleText: "Treść",
+      feedback: {
+        previousArticle: ARTICLE,
+        issues: [
+          {
+            stage: "R3",
+            claim: "Rynek importuje 70–80%.",
+            verdict: "refuted",
+            evidence_url: "https://example.com/dowod",
+            reason: "refuted",
+          },
+          {
+            stage: "R3",
+            claim: "Nowa nazwa.",
+            verdict: "uncertain",
+            evidence_url: "javascript:alert(1)",
+          },
+        ],
+      },
+    });
+
+    expect(prompt).toContain("TRYB POPRAWY");
+    expect(prompt).toContain("Poprzednia wersja artykułu");
+    expect(prompt).toContain("Rynek importuje 70–80%.");
+    expect(prompt).toContain("https://example.com/dowod");
+    expect(prompt).not.toContain("javascript:");
+    expect(prompt).toContain("Nie dodawaj żadnych nowych faktów");
+  });
+
+  it("tryb poprawy tnie długi HTML do ~8000 znaków, nie do 4", () => {
+    const longHtml = `<p>${"a".repeat(9000)}</p>`;
+    const prompt = buildEditorPrompt({
+      category: "Agroenergetyka",
+      originalTitle: "T",
+      articleText: "Treść",
+      feedback: { previousArticle: { ...ARTICLE, content_html: longHtml }, issues: [] },
+    });
+
+    expect(prompt).toContain("a".repeat(100));
+    expect(prompt).not.toContain("a".repeat(9000));
+
+    const json = prompt.split("Poprzednia wersja artykułu (JSON):\n")[1]?.split("\n\nZakwestionowane")[0] ?? "";
+    const parsed = JSON.parse(json) as { content_html: string };
+    expect(parsed.content_html.length).toBeLessThanOrEqual(8000);
+  });
+
+  it("tryb poprawy tnie po domknięciu bloku, gdy closer jest w oknie", () => {
+    const longHtml = `<p>${"a".repeat(7000)}</p><p>${"b".repeat(1000)}</p>`;
+    const prompt = buildEditorPrompt({
+      category: "Agroenergetyka",
+      originalTitle: "T",
+      articleText: "Treść",
+      feedback: { previousArticle: { ...ARTICLE, content_html: longHtml }, issues: [] },
+    });
+
+    const json = prompt.split("Poprzednia wersja artykułu (JSON):\n")[1]?.split("\n\nZakwestionowane")[0] ?? "";
+    const parsed = JSON.parse(json) as { content_html: string };
+    expect(parsed.content_html.length).toBeLessThanOrEqual(8000);
+    expect(parsed.content_html.endsWith("</p>")).toBe(true);
+  });
 });
 
 describe("synthesizeArticle", () => {
@@ -358,8 +423,24 @@ describe("reviewArticle — R1/R2/R3", () => {
     expect(result.article.title).toBe("Poprawiony tytuł");
   });
 
-  it("R2: inference bez dowodu jest wycinany, artykuł publikowany", async () => {
+  it("R2: niewycięty inference → draft z repairIssues inference_missed", async () => {
     const result = await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [
+        {
+          text: "Zupełnie inna treść o pogodzie i cenach paliwa.",
+          type: "inference",
+          evidence: "",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.stage).toBe("R2");
+    expect(result.repairIssues?.[0]).toMatchObject({ stage: "R2", verdict: "inference_missed" });
+  });
+
+  it("R2: inference bez dowodu jest wycinany, artykuł publikowany", async () => {    const result = await reviewArticle(ARTICLE, "źródło", {
       runR1: async () => ({ pass: true, issues: [] }),
       runR2: async () => [
         ...supported,
@@ -371,6 +452,22 @@ describe("reviewArticle — R1/R2/R3", () => {
     expect(result.status).toBe("published");
     expect(result.removedInferences).toHaveLength(1);
     expect(result.cleanedHtml).not.toContain("Akapit drugi");
+    expect(result.article.content_html).toBe(result.cleanedHtml);
+  });
+
+  it("sanityzacja synchronizuje article.content_html (usuwa niedozwolone tagi)", async () => {
+    const result = await reviewArticle(
+      { ...ARTICLE, content_html: "<div><p>Akapit pierwszy o dronach.</p></div>" },
+      "źródło",
+      {
+        runR1: async () => ({ pass: true, issues: [] }),
+        runR2: async () => supported,
+      }
+    );
+
+    expect(result.status).toBe("published");
+    expect(result.article.content_html).toBe(result.cleanedHtml);
+    expect(result.article.content_html).not.toContain("<div>");
   });
 
   it("R3: refuted → draft (bez needs_human_check)", async () => {
@@ -400,6 +497,55 @@ describe("reviewArticle — R1/R2/R3", () => {
 
     expect(result.status).toBe("draft");
     expect(result.needsHumanCheck).toBe(true);
+  });
+
+  it("R3: refuted + uncertain → issues zawiera oba, refuted ma URL, needs_human_check", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [
+        { text: "Firma X ma 40% rynku.", type: "external", evidence: "" },
+        { text: "Firma X działa w Kanadzie.", type: "external", evidence: "" },
+      ],
+      verifyExternal: async () => ({
+        status: "ok",
+        result: {
+          results: [
+            { claim: "Firma X ma 40% rynku.", verdict: "refuted", evidence_url: "https://e.com/refute", reason: "refuted" },
+            { claim: "Firma X działa w Kanadzie.", verdict: "uncertain", evidence_url: "", reason: "no_evidence" },
+          ],
+        },
+        stats: { searches: 2, serp: 0, fetches: 0, confirmed: 0, refuted: 1, uncertain: 1 },
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.stage).toBe("R3");
+    expect(result.needsHumanCheck).toBe(true);
+    expect(result.issues.some((issue) => issue.includes("refuted") && issue.includes("https://e.com/refute"))).toBe(true);
+    expect(result.issues.some((issue) => issue.includes("uncertain"))).toBe(true);
+    expect(result.repairIssues).toHaveLength(2);
+    expect(result.repairIssues?.[0]?.evidence_url).toBe("https://e.com/refute");
+    expect(result.verify).toMatchObject({ refuted: 1, uncertain: 1 });
+  });
+
+  it("R1 regenerate dostaje issues i poprzednią wersję artykułu", async () => {
+    let seenIssues: string[] = [];
+    let seenPrevious: EditorOut | null = null;
+    let attempt = 0;
+
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => (++attempt === 1 ? { pass: false, issues: ["popraw strukturę"] } : { pass: true, issues: [] }),
+      regenerate: async (issues, previousArticle) => {
+        seenIssues = issues;
+        seenPrevious = previousArticle;
+        return { ...ARTICLE, title: "Poprawiony tytuł" };
+      },
+      runR2: async () => supported,
+    });
+
+    expect(result.status).toBe("published");
+    expect(seenIssues).toEqual(["popraw strukturę"]);
+    expect(seenPrevious).toEqual(ARTICLE);
   });
 
   it("R3: confirmed → published z dowodem", async () => {

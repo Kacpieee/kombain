@@ -5,30 +5,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 
 ## TERAZ
 
-- [ ] **F2-T10b: Feedback plumbing, synchronizacja HTML i diagnostyka (`prompts.ts`, `review.ts`, `pipeline.ts`, `orchestrator.ts`, `config.ts`)** — `[CRITICAL]`
-  - **Problem:**
-    1. `regenerate` w R1 ([`pipeline.ts`](file:///home/Kacper/Projects/Kombain%20-%20automatyzacja/apps/worker/src/pipeline.ts#L170-L174)) ignoruje `issues` i nie przekazuje poprzedniego artykułu do [`synthesizeArticle`](file:///home/Kacper/Projects/Kombain%20-%20automatyzacja/apps/worker/src/services/llm.ts#L127).
-    2. `sanitizeEditorHtml` i `stripInferences` w [`review.ts`](file:///home/Kacper/Projects/Kombain%20-%20automatyzacja/apps/worker/src/services/review.ts#L343-L405) aktualizują tylko `cleanedHtml`, zostawiając w `article.content_html` nieoczyszczony HTML i wycięte wnioski `inference`.
-    3. W R3 ([`review.ts`](file:///home/Kacper/Projects/Kombain%20-%20automatyzacja/apps/worker/src/services/review.ts#L426-L443)) wczesny `return` dla `refuted` ucina z `issues` wszystkie `uncertain` i gubi strukturalne dane (`evidence_url`, `stage`, `reason`).
-    4. `VERIFY_MAX_ATOMS` jest czytane z `process.env` w `factcheck.ts` zamiast płynąć z `AppConfig`, `orchestrator.ts` nie zlicza `verify_*` w trybie `dry_run`, a `run --dry-run --url <url>` jest blokowane przez `checkUrlDuplicate`.
-  - **Rozwiązanie i testy (TDD):**
-    1. **Struktury feedbacku i cięcie HTML po blokach (`prompts.ts`, `review.ts`):**
-       - Dodać w `prompts.ts`:
-         - `RepairIssue`: `{ stage: "R1" | "R2" | "R3"; claim: string; verdict: "refuted" | "uncertain" | "inference_missed" | "technical"; evidence_url?: string; reason?: string }`,
-         - `EditorFeedback`: `{ previousArticle: EditorOut; issues: RepairIssue[] }`,
-         - `EditorPromptInput.feedback?: EditorFeedback`.
-       - W `buildEditorPrompt` (gdy podano `feedback`) doklejać sekcję `TRYB POPRAWY (POPRZEDNIA WERSJA I UWAGI REVIEWERA)`:
-         - `previousArticle.content_html` obcinać do maks. `8000` znaków **na granicy tagu zamykającego blok** (`</p>`, `</h2>`, `</h3>`, `</ul>`, `</ol>`), aby nigdy nie przeciąć znacznika HTML w połowie,
-         - sanityzować `evidence_url` (`^https?:\/\/`, maks. `200` znaków, bez białych znaków/nowych linii).
-       - W `ReviewOutcome` zachować `issues: string[]` (pełna lista: wszystkie `refuted` z URL + wszystkie `uncertain`) i dodać `repairIssues: RepairIssue[]`, przewlekając oba pola przez helper `draft()`.
-    2. **R1 `regenerate(issues, previousArticle)` i sync HTML (`review.ts`, `pipeline.ts`):**
-       - Zmienić sygnaturę `ReviewDeps.regenerate?: (issues: string[], previousArticle: EditorOut) => Promise<EditorOut>` i zaktualizować wszystkie wywołania oraz testy.
-       - Zaraz po `sanitizeEditorHtml` (przed `validateTechnical` i `runR1`) oraz po `stripInferences` aktualizować `article = { ...article, content_html: cleanedHtml }`.
-       - W `pipeline.ts` podpiąć w `regenerate` wywołanie `synthesize({ ...editorInput, feedback: { previousArticle, issues: issues.map(...) } })`.
-    3. **Przewleczenie konfiguracji i diagnostyki (`orchestrator.ts`, `pipeline.ts`, `review.ts`):**
-       - Przekazać `verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS` z `runOnce` → `PipelineOverrides` → `ReviewDeps` → `FactcheckDeps`.
-       - W `orchestrator.ts`: w `countOutcome` dla `case "dry_run":` wywoływać `countVerify(report, outcome.review?.verify)`; w `runOnce` przy `options.dryRun && options.url` przekazywać `skipDuplicateCheck: true` do `processArticle`, aby `--dry-run --url` zawsze przechodziło pełny potok.
-
 - [ ] **F2-T10c: Bounded Repair Loop po R2/R3 + deterministyczne guardy bezpieczeństwa (`config.ts`, `review.ts`, `pipeline.ts`, `orchestrator.ts`, `AGENTS.md`)** — `[CRITICAL]`
   - **Problem:**
     - Po przygotowaniu plumbingu (`F2-T10b`) artykuły z pojedynczym `refuted`/`uncertain` (`no_evidence`/`judge_uncertain`) z R3 lub niewyciętym `inference` z R2 (`stripped.missed`) nadal od razu spadają do `draft`.
@@ -68,6 +44,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 - [ ] OPT: M2M alias „tags” w Directusie (edycja tagów w widoku artykułu) — [SAFE]
 - [ ] OPT: naprawa `scripts/verify.sh` (maskowanie exit code, martwy glob `prompts/*.md`, sekrety w `deploy/`, false-positive na literały testów) — [SAFE]
 - [ ] OPT: bramka R3 — wymóg encji nieliczbowej i ≥2 rdzenie spoza top-100 PL (FP) — [SAFE]
-- [ ] OPT: metryki R3 — `fetch_attempts/fetch_fail`, jedno źródło `VERIFY_MAX_ATOMS` (config → serwis; reszta w F2-T10b) — [SAFE]
+- [ ] OPT: metryki R3 — `fetch_attempts/fetch_fail` — [SAFE]
 - [ ] OPT: indeks `article_tags(tag_id)` (przyszłe „artykuły po tagu”) — [CRITICAL]
 - [ ] OPT: czyszczenie wygasłych `article_failures` (>30 dni) — [SAFE]
