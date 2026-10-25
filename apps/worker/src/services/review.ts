@@ -132,12 +132,17 @@ export function validateTechnical(article: EditorOut): { pass: boolean; issues: 
 /** Wycina zdania-wnioski bez dowodu. Zdanie przecięte tagiem = `missed` (recenzja → draft). */
 export function stripInferences(
   html: string,
-  inferences: R2Atom[]
+  inferences: R2Atom[],
+  allAtoms: R2Atom[] = []
 ): { html: string; removed: string[]; missed: string[] } {
   const targets = inferences
     .filter((atom) => atom.type === "inference")
     .map((atom) => atom.text.trim())
     .filter(Boolean);
+  const protectedTexts = allAtoms
+    .filter((atom) => atom.type !== "inference")
+    .map((atom) => normalizeText(atom.text))
+    .filter((text) => text.length > 0);
 
   const parts = html.split(/(<[^>]+>)/g);
   const removed: string[] = [];
@@ -164,6 +169,8 @@ export function stripInferences(
       }
     }
 
+    if (!found) found = removeFuzzySentences(parts, sentence, protectedTexts);
+
     (found ? removed : missed).push(sentence);
   }
 
@@ -171,6 +178,7 @@ export function stripInferences(
     .join("")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\s+<\//g, "</")
+    .replace(/<h([23])>\s*<\/h\1>/g, "")
     .replace(/<p>\s*<\/p>/g, "")
     .trim();
 
@@ -179,6 +187,75 @@ export function stripInferences(
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const FUZZY_THRESHOLD = 0.75;
+
+/** Dopasowanie parafraz: iteracyjnie usuwa WSZYSTKIE zdania >= 0.75, pomijając zdania będące atomami supported/external. */
+function removeFuzzySentences(parts: string[], target: string, protectedTexts: string[]): boolean {
+  const targetWords = words(target);
+  if (targetWords.size < 4) return false;
+
+  let found = false;
+
+  for (;;) {
+    let bestIndex = -1;
+    let bestSentence = "";
+    let bestScore = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (part.startsWith("<")) continue;
+
+      for (const sentence of part.split(/(?<=[.!?…])\s+/)) {
+        if (sentence.trim().length === 0) continue;
+        if (isProtectedSentence(sentence, protectedTexts)) continue;
+
+        const score = similarity(words(sentence), targetWords);
+        if (score < FUZZY_THRESHOLD || score <= bestScore) continue;
+
+        bestIndex = i;
+        bestSentence = sentence;
+        bestScore = score;
+      }
+    }
+
+    if (bestIndex < 0) return found;
+    parts[bestIndex] = parts[bestIndex]!.replace(bestSentence, "");
+    found = true;
+  }
+}
+
+/** Zdanie pokrywa się z atomem supported/external (containment po normalizacji) — nie ruszamy go. */
+function isProtectedSentence(sentence: string, protectedTexts: string[]): boolean {
+  const normalized = normalizeText(sentence);
+  if (!normalized) return false;
+  return protectedTexts.some((text) => text.includes(normalized) || normalized.includes(text));
+}
+
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function words(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3)
+  );
+}
+
+function similarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared += 1;
+  return shared / (a.size + b.size - shared);
 }
 
 /** Link źródła doklejany przez kod (nie przez LLM), z escapowaniem URL. */
@@ -264,13 +341,13 @@ export async function reviewArticle(
   const inferences = atoms.filter((atom) => atom.type === "inference" && !hasProof(atom, sourceText));
   let removedInferences: string[] = [];
   if (inferences.length > 0) {
-    const stripped = stripInferences(cleanedHtml, inferences);
+    const stripped = stripInferences(cleanedHtml, inferences, atoms);
     cleanedHtml = stripped.html;
     removedInferences = stripped.removed;
     if (stripped.missed.length > 0) {
       const samples = stripped.missed
         .slice(0, 3)
-        .map((text) => text.slice(0, 120))
+        .map((text) => `${text.slice(0, 120)}…`)
         .join(" | ");
       const suffix = stripped.missed.length > 3 ? ` … (+${stripped.missed.length - 3})` : "";
       return draft(
@@ -281,6 +358,10 @@ export async function reviewArticle(
         { removedInferences }
       );
     }
+  }
+
+  if (cleanedHtml.replace(/<[^>]+>/g, "").trim().length === 0) {
+    return draft("R2", ["Po wycięciu wniosków treść jest pusta"], article, cleanedHtml, { removedInferences });
   }
 
   const externalAtoms = mergeExternalAtoms(atoms, article.external_refs);

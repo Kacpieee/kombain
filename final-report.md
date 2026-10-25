@@ -60,3 +60,7 @@ Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumow
 ### Hotfix 2 (R2/atomy po pierwszym dry-run)
 
 `stripInferences` usuwa teraz **wszystkie** wystąpienia wniosku (także warianty case/whitespace w tym samym węźle) i pokazuje w `issues` do 3 próbek nieusuniętych zdań. Review: 3 rundy (2 blokery cichych leftovers), końcowo Approve.
+
+### Hotfix 3 (parafrazy w R2)
+
+Fuzzy dopasowanie zdań: próg Jaccard **0.75**, iteracyjne usuwanie wszystkich trafień, ochrona zdań-atomów `supported/external` przez containment; guard pustej treści po wycięciu (`draft R2`). 3 rundy Reviewera (test ochrony był pusty, próg 0.6 usuwał zdania poparte źródłem), końcowo Approve. Ryzyka: krótki atom `supported` (<20 znaków) może ochronić zdanie z wnioskiem; guard pustej treści bez testu.

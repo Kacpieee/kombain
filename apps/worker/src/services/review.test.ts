@@ -183,6 +183,83 @@ describe("stripInferences", () => {
     expect(result.missed).toEqual([]);
     expect(result.html).not.toContain("40%");
   });
+
+  it("wycina parafrazę o wysokim podobieństwie słów (Jaccard)", () => {
+    const html =
+      "<p>Bez reformy prawa i cierpliwego kapitału rewolucja białkowa w akwakulturze pozostanie tylko obietnicą marketingową.</p>";
+    const atoms: R2Atom[] = [
+      {
+        text: "Bez reformy prawa i kapitału cierpliwego rewolucja białkowa pozostanie obietnicą marketingową.",
+        type: "inference",
+        evidence: "",
+      },
+    ];
+
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.missed).toEqual([]);
+    expect(result.html).not.toContain("obietnicą marketingową");
+  });
+
+  it("parafraza występująca dwa razy: usuwa oba wystąpienia", () => {
+    const sentence =
+      "Bez reformy prawa i cierpliwego kapitału rewolucja białkowa w akwakulturze pozostanie tylko obietnicą marketingową.";
+    const html = `<p>${sentence}</p><p>Fakt.</p><p>${sentence}</p>`;
+    const atoms: R2Atom[] = [
+      { text: "Bez reformy prawa i kapitału cierpliwego rewolucja białkowa pozostanie obietnicą marketingową.", type: "inference", evidence: "" },
+    ];
+
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.html).not.toContain("obietnicą marketingową");
+  });
+
+  it("nie usuwa zdania popartego źródłem, nawet jeśli jest podobne do wniosku", () => {
+    const supported =
+      "Reforma prawa i cierpliwy kapitał ratują rewolucję białkową przed porażką marketingową, wynika z raportu FAO.";
+    const inferenceAtom =
+      "Cierpliwy kapitał i reforma prawa ratują rewolucję białkową przed porażką marketingową w akwakulturze.";
+    const inferenceSentence =
+      "Cierpliwy kapitał i reforma prawa ratują rewolucję białkową przed porażką marketingową bez wsparcia inwestorów.";
+    const html = `<p>${supported}</p><p>${inferenceSentence}</p>`;
+    const atoms: R2Atom[] = [
+      { text: supported, type: "supported", evidence: "raport FAO" },
+      { text: inferenceAtom, type: "inference", evidence: "" },
+    ];
+
+    const result = stripInferences(html, atoms.filter((atom) => atom.type === "inference"), atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.html).toContain("wynika z raportu FAO");
+    expect(result.html).not.toContain("bez wsparcia inwestorów");
+  });
+
+  it("trafienie poniżej progu 0.75 nie usuwa zdania (missed → draft)", () => {
+    const supported =
+      "Reforma prawa i cierpliwy kapitał ratują rewolucję białkową porażką marketingową w akwakulturze, wynika z raportu FAO.";
+    const atom: R2Atom = {
+      text: "Cierpliwy kapitał i reforma prawa ratują rewolucję białkową przed porażką marketingową bez wsparcia inwestorów.",
+      type: "inference",
+      evidence: "",
+    };
+
+    expect(stripInferences(`<p>${supported}</p>`, [atom]).missed).toHaveLength(1);
+  });
+
+  it("czyści puste nagłówki po wycięciu wniosku", () => {
+    const html = "<h2>Rynek wzrośnie o 40%.</h2><p>Fakt.</p>";
+    const atoms: R2Atom[] = [{ text: "Rynek wzrośnie o 40%.", type: "inference", evidence: "" }];
+
+    expect(stripInferences(html, atoms).html).toBe("<p>Fakt.</p>");
+  });
+
+  it("nie wycina zdania o niskim podobieństwie (nadal missed)", () => {
+    const html = "<p>Zupełnie inna treść o pogodzie i cenach paliwa.</p>";
+    const atoms: R2Atom[] = [
+      { text: "Bez reformy prawa rewolucja białkowa pozostanie obietnicą marketingową.", type: "inference", evidence: "" },
+    ];
+
+    expect(stripInferences(html, atoms).missed).toHaveLength(1);
+  });
 });
 
 describe("buildSourceLink", () => {
