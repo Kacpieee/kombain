@@ -1,44 +1,44 @@
-# Final report — F2-T1 (`ingestion.ts`)
+# Final report — F2-T2 (`scraper.ts`)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Summary
-Powstał moduł pobierania linków: routing źródła (`rss`/`scraper`), normalizacja URL (względne → bezwzględne, bez `utm_*`/`fbclid`/`gclid`, `&amp;`, fragmentów), RSS przez `rss-parser`, scraper przez ScrapingAnt + cheerio (selektor z DB, fallback `a[href]`), dedupe w pamięci i limit 15 pozycji na źródło. Błąd źródła nie przerywa runu.
+Powstał smart fetch artykułu: bezpośredni `fetch` z UA Chrome i timeoutem 10 s, fallback na ScrapingAnt przy `403/429/503` lub sygnaturze Cloudflare (timeout 30 s), ekstrakcja przez `linkedom + @mozilla/readability`, `og:image` z fallbackiem na pierwszy obraz w artykule oraz twardy filtr `<800` znaków → `rejected` z dokładnym powodem. Odpowiedzi nie-2xx (poza blokadami) oraz ściana CF po fallbacku kończą się `error`, nie `ok`/`rejected`.
 
 ## Changes
-- `apps/worker/src/services/ingestion.ts` — `routeSource`, `normalizeUrl`, `extractLinks`, `buildScrapingAntUrl`, `ingestSource`, typy `SourceForIngestion`/`RawArticleCandidate`/`IngestionResult`; `fetchText` wstrzykiwany (testy bez sieci), domyślnie UA Chrome + timeout 10 s
-- `apps/worker/src/services/ingestion.links.test.ts` — 20 testów (routing, normalizacja, selektory, dedupe, limit, błędy RSS/ScrapingAnt, redakcja klucza)
-- `docs/plans.md` (F2-T1 usunięty), `docs/STATUS.md`
+- `apps/worker/src/services/scraper.ts` — `isBlockedResponse` (szersze markery ścian), `extractOgImage` (tylko obrazy z `<article>`, `data-src`/`data-original`), `scrapeArticle`; wynik `ok | rejected | error`, `fetchedVia` do licznika `scrape_fallback_used`
+- `apps/worker/src/services/scraper.test.ts` — 20 testów bez sieci (blokady, fallback, 404/500, ściana po fallbacku, brak klucza, ekstrakcja, og:image, próg 800)
+- `apps/worker/package.json` — `linkedom ^0.18`, `@mozilla/readability ^0.6` (Dokumentacja §4 KROK 2 / AGENTS §1)
+- `docs/plans.md` (F2-T2 usunięty, TERAZ → F2-T3), `docs/STATUS.md`
 - Branch: `main`
 
-## Verification (liczbowo)
+## Verification (liczbowo, po ostatniej poprawce)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **52 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20)
-- PG-docker: **22 passed** (bez zmian po F1-T2)
-- Bez sieci: wszystkie testy ingestion używają fixture'ów XML/HTML i wstrzykiwanego `fetchText`; brak wołań Gemini/ScrapingAnt
+- vitest: **72 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20 + scraper 20)
+- PG-docker: **22 passed** (bez zmian)
+- Wszystkie testy scrapera na fixture'ach HTML i wstrzykiwanych `fetchDirect`/`fetchScrapingAnt`; zero sieci
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 1 bloker (klucz ScrapingAnt w komunikacie błędu → log JSONL)
-  - Runda 2: **Approve** (0 blokerów; poprawka docs-only: licznik testów w `STATUS.md` 18 → 20)
+  - Runda 1: Request changes — 3 blokery (nie-2xx z długim body → `ok`/`rejected`; brak re-checku ściany CF po fallbacku; brak testów tych ścieżek)
+  - Runda 2: **Approve** — 0 blokerów; wszystkie 3 blokery potwierdzone jako FIXED, w tym przez symulację „bez poprawki”
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- `normalizeUrl` nie usuwa trailing slash ani nie kanonikalizuje ścieżek — dwa warianty tego samego artykułu mogą przejść dedupe (dedup DB i tak złapie `source_url`).
-- Dedupe jest **per źródło**; ten sam URL z dwóch źródeł przejdzie dwukrotnie — dedup run-level wpisany do F2-T6.
-- `extractLinks` wymaga tytułu ≥3 znaki; linki bez tekstu (ikony) są pomijane — zamierzone.
-- Scraper zależy od klucza `SCRAPINGANT_API_KEY`; brak klucza = `error` w wyniku (nie wyjątek), więc orchestrator musi to zliczyć. Klucz jest w query (wymóg API), ale komunikaty błędów są bez query, a klucz jest redagowany w `error`.
-- `redactSecret` nie redaguje formy percent-encoded (klucz z `+ / =`); klucze ScrapingAnt są hex/alnum, więc produkcja bezpieczna — hardening w F2-T6.
-- Warstwa „bez query w komunikacie” nie ma osobnego testu (maskowana przez redakcję) — do dopięcia razem z hardeningiem.
-- RSS `link` bywa pusty (niektóre feedy używają `guid`) — takie pozycje są pomijane; fallback na `guid` dopiero gdy źródło tego wymaga.
-- Nieaktualny `link_selector` daje `candidates: []` i `error: null` (ciche zero) — do obsługi licznikiem w F2-T6.
+- Readability bywa czuły na nietypowy HTML (SPA/AMP) → `error`, nie `rejected`; orchestrator musi rozróżniać te stany (dobry temat nie może trafić do `rejected`).
+- Klucz ScrapingAnt w query (wymóg API), ale komunikaty błędów są bez query, a klucz redagowany także w formie percent-encoded.
+- Ściana Cloudflare z markerem spoza listy i krótką treścią może nadal wyjść jako `rejected` — lista markerów jest rozszerzana reaktywnie; docelowo licznik „podejrzanie krótkich” w F2-T6.
+- `charCount` liczony po normalizacji białych znaków (`replace(/\s+/g," ")`) — minimalnie bardziej restrykcyjny niż `textContent.trim().length` ze specyfikacji.
+- Względny `og:image` rozwiązywany względem `sourceUrl`, nie finalnego URL po redirectach.
+- `title` z Readability może wyjść pusty (brak `<title>`/`h1`) — fallback na `originalTitle` musi być w pipeline (F2-T6).
+- Allowlista tagów HTML wraca jako wymóg R1 w F2-T4 (sanityzacja `content_html`).
 
 ## Out of scope (celowo nietknięte)
-- `scraper.ts` (Readability/og:image/800), gatekeeper, redaktor, review, media/R2, Astro, `deploy/`.
+- `llm.ts`/gatekeeper, redaktor/review, media/R2, persist, Astro, `deploy/`.
 
 ## Next steps
-- F2-T2 `scraper.ts`: fetch UA 10 s → fallback ScrapingAnt przy 403/429/503/CF, Readability, `og:image`, hard filter 800 → `rejected`.
+- F2-T3 `llm.ts + gatekeeper`: 3.1 Flash-Lite, Zod enum 6 kategorii, historia 30 dni, `is_duplicate || !is_relevant` → `rejected`.
