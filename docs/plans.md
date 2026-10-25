@@ -5,7 +5,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 
 ## TERAZ
 
-- [ ] F2-T9 R3 na DeepSeek: Search+Fetch + Flash-Lite jako sędzia, `VERIFY_PROVIDER=deepseek|gemini`, fallback SERP — [CRITICAL]
 - [ ] F3-T1 `apps/web` Astro Hybrid + `directus.ts` + strony `/`, `/kategoria/[slug]`, `/artykul/[slug]` + Cache headers — [SAFE]
 
 ## KIEDYŚ

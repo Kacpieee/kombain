@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SearchConfigError, deepseekSearch, serpSearch } from "./deepseek.js";
+import { SearchConfigError, deepseekFetch, deepseekSearch, serpSearch } from "./deepseek.js";
 
 const OK_BODY = {
   results: [
@@ -62,6 +62,25 @@ describe("deepseekSearch", () => {
     const results = await deepseekSearch("x", { apiKey: "k", fetchImpl, retryDelayMs: 0 });
     expect(calls).toBe(2);
     expect(results).toHaveLength(1);
+  });
+});
+
+describe("deepseekFetch", () => {
+  it("pobiera treść strony (Markdown)", async () => {
+    let body = "";
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      body = String(init?.body);
+      return response(200, { title: "T", content: "# Treść" });
+    }) as unknown as typeof fetch;
+
+    const content = await deepseekFetch("https://example.com/a", { apiKey: "k", fetchImpl });
+    expect(content).toBe("# Treść");
+    expect(JSON.parse(body)).toEqual({ url: "https://example.com/a" });
+  });
+
+  it("402 → SearchConfigError", async () => {
+    const fetchImpl = (async () => response(402, {})) as unknown as typeof fetch;
+    await expect(deepseekFetch("https://example.com/a", { apiKey: "k", fetchImpl })).rejects.toBeInstanceOf(SearchConfigError);
   });
 });
 

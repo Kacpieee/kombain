@@ -8,7 +8,7 @@ Budujesz deterministyczny pipeline TypeScript zastępujący `Stary workflow - ba
 Kolejka: `docs/plans.md` (najwyższy TERAZ) + `docs/STATUS.md` (dziennik). Jeden task na raz.
 
 Dev-harness (to środowisko, Opencode): default `opencode-go/deepseek-v4.1-flash` z `opencode.jsonc`. Nie musisz ręcznie ustawiać modelu.
-Runtime (VPS, poza tym środowiskiem): generacja i review — Google API (`gemini-3.1-flash-lite` bramkarz/dystylacja, `gemini-3.8-flash` redaktor + review z search grounding); **research i (docelowo, F2-T9) weryfikacja faktów — DeepSeek Search/Fetch API** (`api.deepseek.com/v1/tools/*`, szeroki zasięg źródeł, fallback SERP przez ScrapingAnt). deepseek-v4.1 (dev-harness) NIE jest używany na VPS.
+Runtime (VPS, poza tym środowiskiem): generacja — Google API (`gemini-3.1-flash-lite` bramkarz/dystylacja, `gemini-3.8-flash` redaktor); **research i weryfikacja faktów — DeepSeek Search/Fetch API** (`api.deepseek.com/v1/tools/*`, szeroki zasięg źródeł, fallback SERP przez ScrapingAnt). Review R3 domyślnie DeepSeek + Flash-Lite; `VERIFY_PROVIDER=gemini` jako rollback z groundingiem. deepseek-v4.1 (dev-harness) NIE jest używany na VPS.
 
 Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `scripts/verify.sh` ↔ `Reviewer` → 1 commit Conventional → `git push origin`.
 
@@ -48,7 +48,7 @@ Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `s
 7. **Review 3-stopniowe (3.8 Flash, blokujące do `draft`, nie do `rejected`):**
    - R1 technical (bez searchu): HTML/meta/struktura. Fail → 1x retry.
    - R2 extract (bez searchu): atomy `supported-by-source/external/inference`. `inference` bez dowodu → do wycięcia.
-   - R3 verify (3.8 + search grounding): tylko atomy `external` → `{confirmed/refuted/uncertain + evidence URL}`. `refuted` → `draft`, `uncertain` → `draft + needs_human_check`.
+   - R3 verify (DeepSeek Search+Fetch + Flash-Lite; rollback `gemini-3.8-flash` z search grounding): tylko atomy `external` → `{confirmed/refuted/uncertain + evidence URL}`. `refuted` → `draft`, `uncertain` → `draft + needs_human_check`.
 8. **Stany (krytyczne — chroni przed utratą dobrego tematu):**
    - `rejected` = tylko permanentne: za krótki, `is_relevant=false`, `is_duplicate=true`. Dedup blokuje ponowienie.
    - `draft`/`needs_human_check` = fail review, błąd LLM, `refuted/uncertain`. Dedup NIE blokuje: retry robi `ON CONFLICT(source_url) DO UPDATE`.

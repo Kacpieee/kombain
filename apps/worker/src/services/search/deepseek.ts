@@ -73,6 +73,28 @@ export async function deepseekSearch(query: string, options: DeepSeekOptions = {
   throw new Error("DeepSeek search: wyczerpano próby");
 }
 
+/** DeepSeek Fetch API (POST /v1/tools/fetch) — Markdown strony; używane, gdy summary nie wystarcza. */
+export async function deepseekFetch(url: string, options: DeepSeekOptions = {}): Promise<string> {
+  const apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "";
+  if (!apiKey) throw new SearchConfigError("Brak DEEPSEEK_API_KEY");
+
+  const baseUrl = (options.baseUrl ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/$/, "");
+  const response = await (options.fetchImpl ?? fetch)(`${baseUrl}/v1/tools/fetch`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
+  });
+
+  if (response.status === 401 || response.status === 402 || response.status === 403) {
+    throw new SearchConfigError(`DeepSeek fetch: HTTP ${response.status}`);
+  }
+  if (!response.ok) throw new Error(`DeepSeek fetch: HTTP ${response.status}`);
+
+  const payload = (await response.json()) as { content?: unknown };
+  return typeof payload.content === "string" ? payload.content : "";
+}
+
 /** Fallback: DuckDuckGo HTML przez ScrapingAnt (tylko gdy DeepSeek padnie). */
 export interface SerpOptions {
   scrapingAntKey?: string;

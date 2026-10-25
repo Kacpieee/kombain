@@ -1,49 +1,43 @@
-# Final report — F2-T8b (research: DeepSeek Search + dystylacja)
+# Final report — F2-T9 (R3 na DeepSeek)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Summary
-Research nie używa już Gemini Pro z groundingiem. Główna ścieżka: **DeepSeek Search** (2 krótkie kwerendy, $0.0015/artykuł) → **dystylacja Flash-Lite** do 5–10 faktów, gdzie URL jest brany z indeksu wyniku (model nie może wymyślić linku). Fallback: **SERP (ScrapingAnt + DuckDuckGo HTML)** → ta sama dystylacja. Gdy oba padną: artykuł leci bez briefu + alert Telegram. Gemini grounding został jako opcja rollbacku (`SEARCH_PROVIDER=gemini`).
+Weryfikacja R3 nie wymaga już Gemini Pro z groundingiem. Domyślnie: **DeepSeek Search na claim** → top-5 dowodów (authority/rerank) → opcjonalny **DeepSeek Fetch**, gdy summary puste → **Flash-Lite jako sędzia** zwraca `verdict` + `source_index`; URL dowodu jest mapowany z wyników, nie generowany. Fallback: SERP (ScrapingAnt + DDG). `VERIFY_PROVIDER=gemini` zostawia stary grounding (rollback). Nadmiar atomów (cap 8) → `uncertain` (bezpieczny draft).
 
 ## Changes
-- `apps/worker/src/services/search/deepseek.ts` — `deepseekSearch` (POST `/v1/tools/search`, Bearer, retry 1× na 429/5xx, 401/402/403 → `SearchConfigError`), `serpSearch` (DDG HTML przez ScrapingAnt, dekodowanie `uddg`, cheerio)
-- `apps/worker/src/services/research.ts` — provider `deepseek|gemini|off`, `buildResearchQueries`, `factsFromDistill` (indeks→URL, cap 10, dedupe), fallback chain
-- `apps/worker/src/prompts.ts` — `buildDistillPrompt`, `DistillSchema`
-- `apps/worker/src/pipeline.ts` — alert przy błędzie researchu (tylko realny run)
-- `apps/worker/src/orchestrator.ts` — przekazuje `notify` do pipeline'u
-- `apps/worker/src/config.ts`, `.env.example` — `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `SEARCH_PROVIDER`
-- `AGENTS.md` — runtime: Gemini (generacja/review) + DeepSeek Search/Fetch (research/weryfikacja), sekrety
-- Testy: `search/deepseek.test.ts` (6), `research.test.ts` (13), pipeline +1 (alert/dry-run), orchestrator +1 (notify vs dry-run)
-- `docs/plans.md` (F2-T9 R3 DeepSeek przed F3), `docs/STATUS.md`
+- `apps/worker/src/services/factcheck.ts` — `verifyExternalAtoms` z providerem `deepseek|gemini`, `pickEvidence`, `reconcile` (indeks→URL, `confirmed/refuted` wymagają poprawnego URL), cap atomów, Fetch przy pustych summary
+- `apps/worker/src/services/search/deepseek.ts` — `deepseekFetch` (`/v1/tools/fetch`)
+- `apps/worker/src/prompts.ts` — `JudgeSchema`, `buildJudgePrompt`
+- `config.ts`/`.env.example`/`deploy/README.md` — `VERIFY_PROVIDER`
+- `AGENTS.md` — runtime: DeepSeek Search/Fetch także do weryfikacji faktów
+- Testy: factcheck 15 (deepseek + gemini rollback), deepseek +2 (Fetch), config/CLI/orchestrator update
+- `docs/plans.md` (F2-T9 usunięty, TERAZ → F3-T1), `docs/STATUS.md`
 
 ## Verification (liczbowo)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **251 passed, 0 failed, 33 skipped**
+- vitest: **264 passed, 0 failed, 33 skipped**
 - PG-docker: **33 passed** (bez zmian)
-- Zero sieci w testach (mock `fetchImpl`, `search`, `serp`, `generate`)
+- Zero sieci: search/serp/fetch/generate wstrzykiwane w testach
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 3 blokery (brak `DEEPSEEK_API_KEY` w deploy-doc; nieprzetestowane gałęzie: notify w orchestratorze, guard URL, puste wyniki; sekret poza redakcją/guardem)
-  - Runda 2: **Approve** — 0 blokerów; mutacje notify/guard URL/pustych wyników/alertu czerwienieją; dodatkowo dodane testy pustej dystylacji i filtra SERP
+  - Runda 1: Request changes — 2 blokery (sędzia dostawał model Pro zamiast Lite; brak testów bounds/null/negative)
+  - Runda 2: **Approve** — 0 blokerów; mutacje judgeModel/bounds/null/negative czerwienieją
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Fallback SERP (DDG przez ScrapingAnt) jest kruchy i może łamać ToS — tylko awaryjnie; bez `SCRAPINGANT_API_KEY` fallback nie zadziała.
-- DeepSeek wymaga prepaid; przy 402 research cicho przechodzi w fallback, a bez ScrapingAnta — w brak briefu + alert.
-- Wyszukiwanie PL niszowego AgTech może być słabsze niż grounding Gemini → mniej/mniej trafnych faktów; mierzyć `draft_rate`.
-- `SEARCH_PROVIDER=deepseek` jest teraz domyślny — na VPS bez `DEEPSEEK_API_KEY` research zawsze padnie (alert przy każdym artykule).
-- Kwerendy wysyłają tylko tytuł/kategorię (nie treść), ale dystylacja widzi publiczne snippety — brak treści artykułu u providera.
-- Dystylacja używa Flash-Lite; przy słabych wynikach brief może być ubogi (Redaktor napisze ostrożniej).
-- Alert `research fallback` i `run_summary` dzielą rate-limit 1/min — przy błędzie na pierwszym artykule podsumowanie może zostać pominięte.
-- Pola `SEARCH_PROVIDER`/`DEEPSEEK_*` w configu są walidowane, ale serwisy czytają `process.env` bezpośrednio (dwa źródła prawdy).
-- Fakt z briefu jest zaufany: claim może nie odpowiadać treści URL-a (link nie jest halucynowany, ale treść nie jest weryfikowana) — do adresowania w F2-T9.
-- `normalizeFacts` (ścieżka gemini rollback) ma testy; `SEARCH_PROVIDER=gemini` pozostaje opcją awaryjną.
+- Sędzia Flash-Lite jest słabszy niż Pro z groundingiem — możliwe fałszywe `confirmed`; mitygacja: `verdict` + `source_index` z listy wyników (bez wymogu cytatu w schemacie).
+- Koszt: do 8 search + do 8 lite call per artykuł (~$0.006 + tokeny) — nadal tanio, ale rośnie z liczbą atomów.
+- Jakość wyszukiwania PL niszowego AgTech może dawać słabe dowody → więcej `uncertain`; mierzyć `draft_rate`.
+- Fallback SERP kruchy/ToS; bez `SCRAPINGANT_API_KEY` brak awaryjnej ścieżki.
+- Cap 8: nadmiar atomów zawsze `uncertain` (draft), bez wyszukiwania — świadome ograniczenie kosztu.
+- `evidence_url` pochodzi z wyników, ale treść dowodu może nie odpowiadać claimowi (sędzia może się pomylić).
+- Dwa providery (Gemini + DeepSeek) — dwa klucze, dwa punkty awarii; `VERIFY_PROVIDER=gemini` to rollback.
 
 ## Next steps
-- F2-T9: R3 na DeepSeek Search+Fetch + Flash-Lite (fallback SERP), `VERIFY_PROVIDER` do rollbacku.
-- Potem F3-T1 (Astro).
+- F3-T1: Astro Hybrid + strony + cache.

@@ -158,6 +158,7 @@ describe("runCli", () => {
       DEEPSEEK_API_KEY: undefined,
       DEEPSEEK_BASE_URL: "https://api.deepseek.com",
       SEARCH_PROVIDER: "deepseek" as const,
+      VERIFY_PROVIDER: "deepseek" as const,
       MAX_PUBLISHED_PER_RUN: 2,
       MAX_LINKS_PER_SOURCE: 15,
       MAX_PROCESSED_PER_RUN: 10,

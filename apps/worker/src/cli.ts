@@ -140,6 +140,7 @@ export function maskEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     SCRAPINGANT_API_KEY: secret("SCRAPINGANT_API_KEY"),
     DEEPSEEK_API_KEY: secret("DEEPSEEK_API_KEY"),
     SEARCH_PROVIDER: env.SEARCH_PROVIDER ?? "deepseek",
+    VERIFY_PROVIDER: env.VERIFY_PROVIDER ?? "deepseek",
     TELEGRAM_BOT_TOKEN: secret("TELEGRAM_BOT_TOKEN"),
     TELEGRAM_CHAT_ID: secret("TELEGRAM_CHAT_ID"),
     HEALTHCHECKS_PING_URL: secret("HEALTHCHECKS_PING_URL"),
