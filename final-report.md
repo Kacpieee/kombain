@@ -1,49 +1,44 @@
-# Final report — F1-T2 (Directus + baza `kombain` na VPS)
+# Final report — F2-T1 (`ingestion.ts`)
 
 ## Status
-Done (Mode: CRITICAL) — wykonane na VPS przez użytkownika, potwierdzone outputami; repo dogoniło produkcję.
+Done (Mode: CRITICAL)
 
 ## Summary
-Nowa baza `kombain` (5 tabel, 6 kategorii, 3 źródła) na istniejącym PostgreSQL 16, Directus 10.13 przestawiony z archiwalnej `kombain_db`, 5 kolekcji zarejestrowanych w metadanych, rola `Public API` + token read-only. `article_tags` dostał `id` PK wymagany przez Directusa.
+Powstał moduł pobierania linków: routing źródła (`rss`/`scraper`), normalizacja URL (względne → bezwzględne, bez `utm_*`/`fbclid`/`gclid`, `&amp;`, fragmentów), RSS przez `rss-parser`, scraper przez ScrapingAnt + cheerio (selektor z DB, fallback `a[href]`), dedupe w pamięci i limit 15 pozycji na źródło. Błąd źródła nie przerywa runu.
 
-## Changes (repo)
-- `packages/db/schema.sql` — `article_tags.id UUID PK` + `UNIQUE(article_id, tag_id)` (zatwierdzona zmiana DDL)
-- `packages/db/queries.ts` — `linkArticleTags` z `ON CONFLICT (article_id, tag_id) DO NOTHING`
-- `packages/db/schema.pg.test.ts` — +1 test (duplikat pary → `23505`, `id` = UUID); 22/22
-- `deploy/scripts/register-collections.sh` — idempotentna rejestracja 5 kolekcji przez `PATCH /collections/:name` z `meta` (POST zwraca 400 dla istniejących tabel); hasło przez `read -s`
-- `deploy/README.md` — sekcja rejestracji kolekcji, relacje z FK, ograniczenie M2M, rola bez „User Type”, token przez `read -s`, troubleshooting „0 kolekcji”
-- `docs/plans.md` (F1-T2 usunięty), `docs/STATUS.md`
+## Changes
+- `apps/worker/src/services/ingestion.ts` — `routeSource`, `normalizeUrl`, `extractLinks`, `buildScrapingAntUrl`, `ingestSource`, typy `SourceForIngestion`/`RawArticleCandidate`/`IngestionResult`; `fetchText` wstrzykiwany (testy bez sieci), domyślnie UA Chrome + timeout 10 s
+- `apps/worker/src/services/ingestion.links.test.ts` — 20 testów (routing, normalizacja, selektory, dedupe, limit, błędy RSS/ScrapingAnt, redakcja klucza)
+- `docs/plans.md` (F2-T1 usunięty), `docs/STATUS.md`
 - Branch: `main`
 
 ## Verification (liczbowo)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **32 passed, 0 failed, 22 skipped** (PG gated)
-- PG-docker (podman, `postgres:16`): **22 passed, 0 failed**
-- E2E `register-collections.sh` (Directus 10.13 + PG 16): run 1 i run 2 → 5/5 `ok`, `zarejestrowane: article_tags, articles, categories, sources, tags`, 29 tabel bez zmian
-- VPS (potwierdzone przez użytkownika): `kombain` = 5 tabel / 6 kategorii / 3 źródeł; `kombain_db` = 29 tabel (nietknięta); `Public API`: `articles=200`, `sources=403`; dump `kombain_db` 93K, `TABLE DATA=29`, `DUMP OK`, SHA-256 zapisany
+- vitest: **52 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20)
+- PG-docker: **22 passed** (bez zmian po F1-T2)
+- Bez sieci: wszystkie testy ingestion używają fixture'ów XML/HTML i wstrzykiwanego `fetchText`; brak wołań Gemini/ScrapingAnt
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 2 blokery (false-green rejestracji: PATCH nieistniejącej kolekcji tworzył fantom; token w historii powłoki + `>` obcinał `.env`)
-  - Runda 2: **Approve** — 0 blokerów; blokery potwierdzone eksperymentalnie (m.in. usunięcie `ensure_table` odtwarza fantom, `DROP TABLE` → exit 3 bez PATCH)
-- Po werdykcie: wyłącznie zmiany docs-only w `deploy/README.md` (eksport env przed `curl`, sekcja migracji legacy `article_tags`, ostrzeżenie o haśle w §9); zero zmian w kodzie/SQL/testach; `verify.sh` uruchomiony ponownie
+  - Runda 1: Request changes — 1 bloker (klucz ScrapingAnt w komunikacie błędu → log JSONL)
+  - Runda 2: **Approve** (0 blokerów; poprawka docs-only: licznik testów w `STATUS.md` 18 → 20)
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- **M2M alias „tags”** w widoku artykułu nie istnieje — Directus nie pozwala dopiąć junction do relacji wyprowadzonej z FK (403). Tagi: edycja przez kolekcję `article_tags`, odczyt przez `article_tags.tag_id.name`. Osobny task OPT.
-- `PUBLIC_URL` warning w logach Directusa — kosmetyka, do dopisania w compose.
-- Directus 10.13 jest 55 wersji za aktualną — upgrade osobnym taskiem.
-- `scripts/verify.sh` nadal maskuje exit code `tsc`/`vitest` pipe'em; liczby potwierdzane osobno.
-- Stara `kombain_db` czeka na decyzję o usunięciu po cutoverze (dump poza VPS do zrobienia po stronie użytkownika).
-- Skrypt rejestracji nie wykrywa **zastanych** fantomów (`directus_collections` bez tabeli) — sprząta je tylko ręcznie; na VPS fantomów nie było (5/5 z `schema`).
-- Brak indeksu po `article_tags.tag_id` — przyszłe „artykuły po tagu” zrobią seq scan; osobna zgoda na DDL, jeśli zajdzie potrzeba.
+- `normalizeUrl` nie usuwa trailing slash ani nie kanonikalizuje ścieżek — dwa warianty tego samego artykułu mogą przejść dedupe (dedup DB i tak złapie `source_url`).
+- Dedupe jest **per źródło**; ten sam URL z dwóch źródeł przejdzie dwukrotnie — dedup run-level wpisany do F2-T6.
+- `extractLinks` wymaga tytułu ≥3 znaki; linki bez tekstu (ikony) są pomijane — zamierzone.
+- Scraper zależy od klucza `SCRAPINGANT_API_KEY`; brak klucza = `error` w wyniku (nie wyjątek), więc orchestrator musi to zliczyć. Klucz jest w query (wymóg API), ale komunikaty błędów są bez query, a klucz jest redagowany w `error`.
+- `redactSecret` nie redaguje formy percent-encoded (klucz z `+ / =`); klucze ScrapingAnt są hex/alnum, więc produkcja bezpieczna — hardening w F2-T6.
+- Warstwa „bez query w komunikacie” nie ma osobnego testu (maskowana przez redakcję) — do dopięcia razem z hardeningiem.
+- RSS `link` bywa pusty (niektóre feedy używają `guid`) — takie pozycje są pomijane; fallback na `guid` dopiero gdy źródło tego wymaga.
+- Nieaktualny `link_selector` daje `candidates: []` i `error: null` (ciche zero) — do obsługi licznikiem w F2-T6.
 
 ## Out of scope (celowo nietknięte)
-- Upgrade Directusa, M2M alias, `media.ts`/R2, prompty/LLM, `apps/web`, F2+.
-- Bazy `n8n`, `postgres`, stack kcal.
+- `scraper.ts` (Readability/og:image/800), gatekeeper, redaktor, review, media/R2, Astro, `deploy/`.
 
 ## Next steps
-- F2-T1 `ingestion.ts` (rss-parser + ScrapingAnt + cheerio, max 15, normalizacja URL) + testy.
+- F2-T2 `scraper.ts`: fetch UA 10 s → fallback ScrapingAnt przy 403/429/503/CF, Readability, `og:image`, hard filter 800 → `rejected`.
