@@ -49,6 +49,7 @@ function base(overrides: PipelineOverrides = {}): PipelineOverrides {
     history: vi.fn(async () => []),
     classify: vi.fn(async () => GATE_OK),
     synthesize: vi.fn(async () => ({ status: "ok" as const, article: ARTICLE })),
+    research: vi.fn(async () => ({ status: "ok" as const, facts: [] })),
     review: vi.fn(async () => ({
       status: "published" as const,
       needsHumanCheck: false,
@@ -323,5 +324,53 @@ describe("processArticle — ścieżki", () => {
     expect(result).toMatchObject({ status: "error", stage: "gate" });
     expect(deps.save).not.toHaveBeenCalled();
     expect(deps.reject).not.toHaveBeenCalled();
+  });
+
+  it("przekazuje research brief do Redaktora i review", async () => {
+    const facts = [{ claim: "Rynek dronów wzrósł o 20% w 2025.", url: "https://example.com/raport", source_type: "research" }];
+    const deps = base({ research: vi.fn(async () => ({ status: "ok" as const, facts })) });
+
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result.status).toBe("published");
+    expect(deps.synthesize).toHaveBeenCalledWith(
+      expect.objectContaining({ researchBrief: facts, category: "Inteligentne Maszyny i Drony" })
+    );
+    expect(deps.review).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ researchBrief: facts })
+    );
+  });
+
+  it("błąd researchu nie blokuje artykułu (brief pusty)", async () => {
+    const deps = base({
+      research: vi.fn(async () => ({ status: "error" as const, error: "429" })),
+    });
+
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result.status).toBe("published");
+    expect(deps.synthesize).toHaveBeenCalledWith(expect.objectContaining({ researchBrief: [] }));
+  });
+
+  it("research jest wołany po Bramkarzu, przed Redaktorem", async () => {
+    const deps = base();
+    const order: string[] = [];
+    deps.classify = vi.fn(async () => {
+      order.push("gate");
+      return GATE_OK;
+    });
+    deps.research = vi.fn(async () => {
+      order.push("research");
+      return { status: "ok" as const, facts: [] };
+    });
+    deps.synthesize = vi.fn(async () => {
+      order.push("editor");
+      return { status: "ok" as const, article: ARTICLE };
+    });
+
+    await processArticle(POOL, CANDIDATE, deps);
+    expect(order).toEqual(["gate", "research", "editor"]);
   });
 });

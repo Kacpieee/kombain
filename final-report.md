@@ -1,74 +1,44 @@
-# Final report — F2-T7b (alerty, timeout, backoff)
+# Final report — F2-T8 (research stage przed Redaktorem)
 
 ## Status
-Done (Mode: CRITICAL — DDL + sekrety + logika runu)
+Done (Mode: CRITICAL — zmiana pipeline'u i promptów)
 
 ## Summary
-Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumowanie na Telegram (z alertem przy `errors>=3` lub awarii wszystkich źródeł), pinguje healthchecks (start/success/fail), ma twardy timeout w cronie, limit przetworzonych linków i soft deadline, a linki, które padły 3 razy, są pomijane przez 7 dni.
+Między Bramkarzem a Redaktorem wszedł etap **research**: Gemini Pro z search grounding zbiera 5–10 weryfikowalnych faktów z URL-ami (szeroki zasięg: oficjalne, prasa, blogi eksperckie, agregatory). Redaktor dostaje brief i **nie wolno mu wprowadzać faktów spoza źródła i briefu**; atomy `external` pokryte briefem nie idą do R3, więc mniej fałszywych `uncertain → draft`. Błąd researchu nie blokuje artykułu (brief pusty, zachowanie jak dotychczas).
 
 ## Changes
-- `packages/db/schema.sql` + `deploy/sql/migrate-article-failures.sql` — tabela `article_failures` (+ indeks)
-- `packages/db/failures.ts` — `getFailure`, `recordFailure` (`attempts+1`), `clearFailure`, `shouldSkipFailure` (3 próby / 7 dni); eksport `@kombain/db/failures`
-- `apps/worker/src/services/notify.ts` — Telegram (redakcja sekretów, rate-limit 1/min, no-op bez env), `formatRunSummary`, `shouldAlert`, `pingHealthcheck`
-- `apps/worker/src/orchestrator.ts` — healthcheck start/success **wstrzykiwane** (bez ukrytego I/O), backoff przed pipeline, zapis/czyszczenie porażek, `MAX_PROCESSED_PER_RUN`, soft deadline `RUN_TIMEOUT_MS`, jedno podsumowanie/alert na run (timeout też podnosi ALERT); błędy failure-store nie wywalają runu
-- `apps/worker/src/index.ts` — `handleFatal` (log + Telegram + `/fail`), wpięte realne `notify`/`healthcheck`
-- `apps/worker/src/cli.ts` — realne alerty tylko poza dry-run
-- `apps/worker/src/config.ts` — `MAX_PROCESSED_PER_RUN`, `RUN_TIMEOUT_MS`, `TELEGRAM_*`, `HEALTHCHECKS_PING_URL`
-- `deploy/scripts/worker-cron.sh` — `timeout 1800` + alert/ping przy 124; README §11.4 i §13 (Telegram, healthchecks, backoff, migracja jako `kombain_user`)
-- `deploy/sql/migrate-article-failures.sql` — `OWNER TO kombain_user` (spójność z rolą workera)
-- Testy: `notify.test.ts` (11), `index.test.ts` (1, `handleFatal`), orchestrator +9 (backoff, record/clear, failure-store exception, notify/hc, alert, dry-run cisza, timeout, `MAX_PROCESSED` z configu), PG +3
-- `docs/plans.md` (T7b usunięty, TERAZ → F3-T1), `docs/STATUS.md`, `.env.example`
+- `apps/worker/src/prompts.ts` — `ResearchSchema`/`ResearchFact`, `buildResearchPrompt`, `EditorPromptInput.researchBrief`, sekcja „USTALONE FAKTY” + twarda zasada „zero nowych faktów”, reguła `external_refs` tylko z briefu
+- `apps/worker/src/services/research.ts` — `researchTopic` (`search: true`), `normalizeFacts` (http(s), dedupe po claim, min. 10 znaków, cap 10)
+- `apps/worker/src/pipeline.ts` — research po Bramkarzu, brief przekazany do `synthesize` i `review`; błąd researchu → pusty brief
+- `apps/worker/src/services/review.ts` — `ReviewDeps.researchBrief`; atomy external pokryte briefem pomijają R3 (`coveredByResearch`)
+- Testy: `research.test.ts` (5), pipeline +3 (brief, fallback, kolejność), review +3 (brief pomija R3, atom szerszy → R3, krótki atom → R3), editor prompt +2
+- `docs/plans.md`, `docs/STATUS.md`, `final-report.md`
 
-## Verification (liczbowo, po ostatniej poprawce)
+## Verification (liczbowo)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **211 passed, 0 failed, 33 skipped**
-- PG-docker (podman, `postgres:16`): **33 passed** (w tym 3 failures/backoff)
-- Zero sieci: notify/healthcheck testowane przez wstrzykiwane `send`/`fetchImpl`; orkiestrator domyślnie **nie** woła I/O, realne alerty wpinają tylko `index.ts`/`cli.ts` (poza dry-run)
+- vitest: **235 passed, 0 failed, 33 skipped**
+- PG-docker: **33 passed** (bez zmian)
+- Zero sieci w testach (research/LLM przez wstrzykiwany `generate`)
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 4 blokery (migracja jako `n8n` → brak DML dla `kombain_user`; brak testu wyjątku failure-store; brak testu `MAX_PROCESSED_PER_RUN` z configu; brak testu `worker_fatal`)
-  - Runda 2: **Approve** — 0 blokerów; mutacje M1–M3b potwierdziły KILLED dla wszystkich poprawek z R1
+  - Runda 1: Request changes — 1 bloker (`coveredByResearch` akceptował atom szerszy niż fakt z briefu → dodatkowy fakt omijał R3)
+  - Runda 2: **Approve** — 0 blokerów; mutacje M1/M2 czerwienieją, testy brzegowe (długie/krótkie atomy) potwierdzone
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Telegram i healthchecks są best-effort — błąd wysyłki jest połykany (alert nie wywala runu, ale może zginąć).
-- Rate-limit 1 wiadomość/min: podsumowanie i natychmiastowy `worker_fatal` w tej samej minucie → drugi alert może zostać pominięty.
-- `healthcheck success` leci także przy błędach artykułów i po soft timeoucie (alert tylko w treści Telegrama); `/fail` pochodzi z fatala lub wrappera przy 124.
-- Twardy timeout w cronie zabija `docker compose run`; kontener potomny może w skrajnym przypadku przeżyć — do potwierdzenia na VPS.
-- Backoff kluczuje po `source_url`; po wygaśnięciu okna link dostaje jedną próbę (kolejny błąd znów daje 7 dni przerwy), a `attempts` nie resetuje się.
-- Wygasłe wpisy `article_failures` nie są usuwane — rosną; czyszczenie w OPT.
-- `RUN_TIMEOUT_MS` sprawdzany między artykułami; pojedyncze zawieszone LLM wymaga twardego timeoutu crona.
-- Błędy failure-store trafiają tylko do JSONL (`failure_store_error`), nie do licznika `errors`/Telegramu.
-- Wpięcie realnych `notify`/`healthcheck` w `index.ts`/`cli.ts` nie ma testu (mutacja przechodzi) — do domknięcia w OPT.
-- Migracja `article_failures` nie jest wykonywana w testach PG (testy aplikują `schema.sql`); plik migracji może się rozjechać.
-- `verify.sh` nie uruchamia testów PG (brak `TEST_DATABASE_URL`), więc `exit 0` nie obejmuje integracji — PG potwierdzane osobno (`scripts/db-test.sh`).
+- Research szeroki (blogi/agregatory) → możliwe słabe źródła; liczby nadal warto potwierdzać w R3, ale brief je pomija (świadoma decyzja: mniej draftów kosztem ryzyka).
+- Błąd researchu jest cichy — pipeline jedzie dalej bez briefu, bez licznika `research_failed` w `run_summary` (do dodania).
+- Prompt injection z wyników wyszukiwania: brief trafia do promptu Redaktora jako dane; brak twardej sanityzacji treści faktów.
+- `coveredByResearch` ufa briefowi: atom zawarty w fakcie z researchu nie wraca do R3, więc błędny fakt z researchu (halucynacja groundingu) trafi do publikacji bez niezależnej weryfikacji — mitygacja tylko promptowa.
+- Brief nie jest zapisywany w DB (brak audytu „skąd Redaktor wziął fakt”); `external_refs` z URL są w treści/draftach, ale bez pełnej listy faktów.
+- Koszt: +1 wywołanie Pro z groundingiem na artykuł (~20–40 s).
 
-## Out of scope (celowo nietknięte)
-- GUI, Grafana/Prometheus, alerty per `source_error`, F3.
+## Out of scope
+- F3 (Astro), zmiana R3 na mniej rygorystyczny, zapis briefu w DB, UI do researchu.
 
 ## Next steps
-- F3-T1: Astro Hybrid + `directus.ts` + `/`, `/kategoria/[slug]`, `/artykul/[slug]` + cache headers.
-
-## Hotfix (po pierwszym dry-run na VPS)
-
-`dry_run` w JSONL zawiera teraz `stage`, `needsHumanCheck` i `issues` z review — bez tego nie dało się ustalić, dlaczego artykuł kończy się draftem. Test regresyjny w `orchestrator.test.ts`; `verify.sh` exit 0, Reviewer Approve.
-
-### Hotfix 2 (R2/atomy po pierwszym dry-run)
-
-`stripInferences` usuwa teraz **wszystkie** wystąpienia wniosku (także warianty case/whitespace w tym samym węźle) i pokazuje w `issues` do 3 próbek nieusuniętych zdań. Review: 3 rundy (2 blokery cichych leftovers), końcowo Approve.
-
-### Hotfix 3 (parafrazy w R2)
-
-Fuzzy dopasowanie zdań: próg Jaccard **0.75**, iteracyjne usuwanie wszystkich trafień, ochrona zdań-atomów `supported/external` przez containment; guard pustej treści po wycięciu (`draft R2`). 3 rundy Reviewera (test ochrony był pusty, próg 0.6 usuwał zdania poparte źródłem), końcowo Approve. Ryzyka: krótki atom `supported` (<20 znaków) może ochronić zdanie z wnioskiem; guard pustej treści bez testu.
-
-### Hotfix 4 (cytaty R2 + inline tagi)
-
-Prompt R2 wymaga dosłownego cytatu bez tagów HTML; `inference` zawsze zgłaszane (poza limitem 20). Matcher dostał `removeByVisibleText` (dopasowanie po `textContent` bloku, ochrona atomów supported/external), więc zdania ze `<strong>/<em>` też są wycinane. 3 rundy Reviewera (m.in. pozorny fix promptu), końcowo Approve. Ryzyka: mieszane wystąpienia (exact + inline) mogą zostawić jedno; exact-path bez ochrony supported.
-
-### Hotfix 5 (external_refs / R2 external)
-
-`external_refs` Redaktora i `external` w R2 zawężone do faktów weryfikowalnych (liczba/data/nazwa/regulacja/badanie z nazwą i rokiem); ogólne twierdzenia przyczynowe i oceny → `inference`. Przywrócona semantyka `type` (external vs supported) i zakaz wymyślania źródeł. 3 rundy Reviewera, Approve.
+- F3-T1: Astro Hybrid + `directus.ts` + strony + cache headers. Po pierwszym pełnym runie z researchem ocenić `draft_rate`.

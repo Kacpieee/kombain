@@ -62,6 +62,34 @@ export const R3Schema = z.object({
 });
 export type R3Result = z.infer<typeof R3Schema>;
 
+export const ResearchFactSchema = z.object({
+  claim: z.string(),
+  url: z.string(),
+  source_type: z.string().default("other"),
+});
+export const ResearchSchema = z.object({ facts: z.array(ResearchFactSchema) });
+export type ResearchFact = z.infer<typeof ResearchFactSchema>;
+export type ResearchInput = { title: string; text: string; category: Category };
+
+/** Research przed Redaktorem: zbiera weryfikowalne fakty z siecią (search grounding). */
+export function buildResearchPrompt(input: ResearchInput): string {
+  return `Zbierz materiał faktograficzny do artykułu AgTech. Korzystaj z wyszukiwania w sieci.
+
+TEMAT: ${input.title}
+KATEGORIA: ${input.category}
+TEKST ŹRÓDŁOWY:
+${input.text}
+
+Zasady:
+1. Zbierz 5-10 konkretnych, weryfikowalnych faktów związanych z tematem: liczby, daty, nazwy firm/osób/technologii, regulacje, badania.
+2. Do każdego faktu podaj URL źródła, z którego go wziąłeś (dowolne wiarygodne źródło: oficjalna strona, raport, prasa branżowa, blog ekspercki). Nie wymyślaj URL-i.
+3. "source_type": official | company | research | press | blog | other.
+4. Nie powtarzaj faktów z tekstu źródłowego — interesują nas fakty uzupełniające.
+5. Jeśli nie znajdziesz faktów, zwróć pustą tablicę.
+
+Zwróć JSON: {"facts": [{"claim": "...", "url": "https://...", "source_type": "..."}]}.`;
+}
+
 export const CATEGORY_PERSONAS: Record<(typeof CATEGORIES)[number], { expertise: string; tech: string }> = {
   "AI i Automatyzacja": { expertise: "ML, głębokie sieci neuronowe, Computer Vision, automatyzacja decyzji.", tech: "AI, predykcja, automatyzacja systemowa." },
   "Rolnictwo Precyzyjne": { expertise: "GIS, teledetekcja, VRA, IoT.", tech: "Agronomia cyfrowa, Big Data, telemetria." },
@@ -113,6 +141,7 @@ export interface EditorPromptInput {
   category: Category;
   originalTitle: string;
   articleText: string;
+  researchBrief?: ResearchFact[];
 }
 
 /** Redaktor: 1 szablon × persona działu (Dokumentacja §4.2). Link źródła dokleja kod, nie model. */
@@ -127,6 +156,11 @@ DANE ŹRÓDŁOWE:
 Tytuł oryginału: ${input.originalTitle}
 Treść źródłowa: ${input.articleText}
 
+USTALONE FAKTY (research; jedyne dozwolone fakty spoza źródła — każdy z URL):
+${researchSection(input.researchBrief)}
+
+TWARDA ZASADA: nie wolno wprowadzać żadnych faktów (liczb, dat, nazw firm/osób, regulacji) spoza tekstu źródłowego i sekcji USTALONE FAKTY. Jeśli brakuje danych — pisz ogólnie, bez wymyślania.
+
 WYTYCZNE TREŚCIOWE (klucz 'content_html'):
 1. Wstęp z hookiem: 3-5 zdań otwierających z mocnym haczykiem (statystyka, problem biznesowy, zaskoczenie). Od razu pokaż wartość wdrożeniową.
 2. Struktura HTML: używaj wyłącznie tagów <p>, <h2>, <h3>, <strong>, <em>, <ul>, <ol>, <li>. Samodzielnie zbuduj logiczną architekturę nagłówków.
@@ -140,10 +174,15 @@ WYTYCZNE METADANYCH:
 3. 'tldr': dokładnie 3-5 krótkich wniosków technicznych (tablica stringów).
 4. 'tags': maks. 4 tagi, małymi literami.
 5. 'tech_summary': obiekt z kluczami "podmiot", "technologia", "cel_wdrozenia".
-6. 'external_refs': **tylko weryfikowalne** fakty spoza tekstu źródłowego — konkretna liczba, data, nazwa firmy/osoby, regulacja albo badanie z nazwą i rokiem. Nie umieszczaj tu ogólnych twierdzeń przyczynowych, ocen ani przewidywań („przestój oznacza kary umowne") — te należą do treści jako opinia i nie są weryfikowane w sieci. Format: {claim, type, source}, gdzie type = "external" tylko dla faktów spoza źródła, "supported" gdy źródło wprost je potwierdza. Nie wymyślaj źródeł.
+6. 'external_refs': **tylko fakty z sekcji USTALONE FAKTY**, z ich URL. Format: {claim, type, source}, gdzie type = "external" dla faktów spoza źródła, "supported" gdy źródło wprost je potwierdza. Nie wymyślaj źródeł.
 
 Nie dodawaj linku "Źródło:" ani URL-i — kod dokleja je deterministycznie z source_url.
 Zwróć wyłącznie JSON z kluczami: title, content_html, tldr, tags, tech_summary, slug, external_refs.`;
+}
+
+function researchSection(facts: ResearchFact[] | undefined): string {
+  if (!facts || facts.length === 0) return "(brak — nie dodawaj faktów spoza tekstu źródłowego)";
+  return facts.map((fact) => `- ${fact.claim} (${fact.url})`).join("\n");
 }
 
 /** R1 technical: HTML/meta/struktura, bez wyszukiwania w sieci. */

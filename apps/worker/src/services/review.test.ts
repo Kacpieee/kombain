@@ -71,7 +71,28 @@ describe("buildEditorPrompt", () => {
     expect(prompt).not.toMatch(/pocketbase/i);
     expect(prompt).not.toContain("[WPISZ");
     expect(prompt).toContain('Nie dodawaj linku "Źródło:"');
-    expect(prompt).toContain("Nie umieszczaj tu ogólnych twierdzeń przyczynowych");
+    expect(prompt).toContain("tylko fakty z sekcji USTALONE FAKTY");
+  });
+
+  it("wstawia research brief z URL i zakazuje nowych faktów", () => {
+    const prompt = buildEditorPrompt({
+      category: "Agroenergetyka",
+      originalTitle: "T",
+      articleText: "Treść",
+      researchBrief: [
+        { claim: "Rynek Agri-PV wzrósł o 30% w 2025.", url: "https://example.com/raport", source_type: "research" },
+      ],
+    });
+
+    expect(prompt).toContain("USTALONE FAKTY");
+    expect(prompt).toContain("Rynek Agri-PV wzrósł o 30% w 2025.");
+    expect(prompt).toContain("https://example.com/raport");
+    expect(prompt).toContain("nie wolno wprowadzać żadnych faktów");
+  });
+
+  it("bez briefu jawnie zakazuje faktów spoza źródła", () => {
+    const prompt = buildEditorPrompt({ category: "Agroenergetyka", originalTitle: "T", articleText: "Treść" });
+    expect(prompt).toContain("(brak — nie dodawaj faktów spoza tekstu źródłowego)");
   });
 
   it("każdy z 6 działów dostaje własną personę", () => {
@@ -513,6 +534,67 @@ describe("reviewArticle — R1/R2/R3", () => {
 
     expect(result.status).toBe("draft");
     expect(result.needsHumanCheck).toBe(true);
+  });
+
+  it("atom pokryty researchem nie idzie do R3", async () => {
+    let verifyCalled = false;
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [{ text: "Rynek dronów wzrósł o 20% w 2025.", type: "external", evidence: "" }],
+      researchBrief: [{ claim: "Rynek dronów wzrósł o 20% w 2025.", url: "https://example.com/raport", source_type: "research" }],
+      verifyExternal: async () => {
+        verifyCalled = true;
+        return { status: "ok", result: { results: [] } };
+      },
+    });
+
+    expect(verifyCalled).toBe(false);
+    expect(result.status).toBe("published");
+  });
+
+  it("atom z dodatkowym faktem ponad brief MUSI iść do R3", async () => {
+    let seen: string[] = [];
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [
+        {
+          text: "Rynek dronów wzrósł o 20% w 2025 roku, a emisje spadły o 40%.",
+          type: "external",
+          evidence: "",
+        },
+      ],
+      researchBrief: [
+        { claim: "Rynek dronów wzrósł o 20% w 2025 roku", url: "https://example.com/raport", source_type: "research" },
+      ],
+      verifyExternal: async (atoms) => {
+        seen = atoms.map((atom) => atom.text);
+        return {
+          status: "ok",
+          result: {
+            results: [{ claim: atoms[0]!.text, verdict: "uncertain", evidence_url: "" }],
+          },
+        };
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(result.status).toBe("draft");
+    expect(result.needsHumanCheck).toBe(true);
+  });
+
+  it("krótki atom (np. „20%”) nie jest pokrywany przez brief", async () => {
+    let called = false;
+    await reviewArticle(ARTICLE, "źródło", {
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [{ text: "20%", type: "external", evidence: "" }],
+      researchBrief: [{ claim: "Rynek dronów wzrósł o 20% w 2025 roku", url: "https://example.com/r", source_type: "research" }],
+      verifyExternal: async () => {
+        called = true;
+        return { status: "ok", result: { results: [{ claim: "20%", verdict: "confirmed", evidence_url: "https://e.com" }] } };
+      },
+    });
+
+    expect(called).toBe(true);
   });
 
   it("external_refs Redaktora wchodzą do R3, nawet gdy R2 dał tylko supported", async () => {

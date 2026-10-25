@@ -22,6 +22,7 @@
 - dry_run loguje `stage/needsHumanCheck/issues`
 - `stripInferences` usuwa wszystkie wystąpienia, fuzzy ≥0.75 z ochroną atomów supported/external
 - prompt R2 wymaga **dosłownego cytatu bez tagów HTML** (maks. 20 atomów) — parafrazy powodowały 6/6 draftów
+- **F2-T8 research stage**: Bramkarz → research (search grounding, 5–10 faktów z URL) → Redaktor z briefem i zakazem nowych faktów; atomy pokryte briefem pomijają R3; 235 testów unit + 33 PG
 
 ## Następne (z plans.md TERAZ)
 - F3-T1 Astro Hybrid + strony

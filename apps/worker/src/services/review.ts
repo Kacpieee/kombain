@@ -5,7 +5,7 @@ import {
   buildR1Prompt,
   buildR2Prompt,
 } from "../prompts.js";
-import type { EditorOut, R1Decision, R2Atom } from "../prompts.js";
+import type { EditorOut, R1Decision, R2Atom, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
 import type { FactcheckOutcome } from "./factcheck.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
@@ -45,6 +45,8 @@ export type ExternalVerdict = { claim: string; verdict: "confirmed" | "refuted" 
 export interface ReviewDeps {
   generate?: GenerateFn;
   model?: string;
+  /** Fakty z researchu — atomy pokryte briefem nie idą do R3. */
+  researchBrief?: ResearchFact[];
   /** Jednorazowy retry Redaktora po failu R1 (AGENTS §2.7). */
   regenerate?: (issues: string[]) => Promise<EditorOut>;
   runR1?: (article: EditorOut) => Promise<R1Decision>;
@@ -242,6 +244,17 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+/** Atom pokryty faktem z researchu — tylko gdy atom zawiera się w fakcie (bez dodatkowych treści). */
+function coveredByResearch(claim: string, facts: ResearchFact[]): boolean {
+  const normalized = normalizeText(claim);
+  if (normalized.length < 10) return false;
+
+  return facts.some((fact) => {
+    const factText = normalizeText(fact.claim);
+    return factText.length > 0 && factText.includes(normalized);
+  });
+}
+
 /**
  * Dopasowanie po widocznym tekście bloku (p/li/h2/h3) — pozwala wyciąć cytat, który w HTML
  * jest przecięty tagiem inline (<strong>/<em>). Formatowanie w tym bloku upraszcza się do tekstu.
@@ -394,7 +407,9 @@ export async function reviewArticle(
     return draft("R2", ["Po wycięciu wniosków treść jest pusta"], article, cleanedHtml, { removedInferences });
   }
 
-  const externalAtoms = mergeExternalAtoms(atoms, article.external_refs);
+  const externalAtoms = mergeExternalAtoms(atoms, article.external_refs).filter(
+    (atom) => !coveredByResearch(atom.text, deps.researchBrief ?? [])
+  );
   let external: ExternalVerdict[] = [];
 
   if (externalAtoms.length > 0) {

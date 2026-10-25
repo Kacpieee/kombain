@@ -8,6 +8,7 @@ import {
 import type { RawArticleCandidate } from "./services/ingestion.js";
 import { classifyArticle, synthesizeArticle } from "./services/llm.js";
 import { processArticleImage } from "./services/media.js";
+import { researchTopic } from "./services/research.js";
 import { reviewArticle } from "./services/review.js";
 import { scrapeArticle } from "./services/scraper.js";
 import type { ReviewOutcome } from "./services/review.js";
@@ -42,6 +43,7 @@ export interface PipelineOverrides {
   history?: typeof fetchHistoricalContext30d;
   classify?: typeof classifyArticle;
   synthesize?: typeof synthesizeArticle;
+  research?: typeof researchTopic;
   review?: typeof reviewArticle;
   media?: typeof processArticleImage;
   save?: typeof saveArticle;
@@ -62,6 +64,7 @@ export async function processArticle(
   const history = overrides.history ?? ((...args: Parameters<typeof fetchHistoricalContext30d>) => fetchHistoricalContext30d(...args));
   const classify = overrides.classify ?? classifyArticle;
   const synthesize = overrides.synthesize ?? synthesizeArticle;
+  const research = overrides.research ?? researchTopic;
   const review = overrides.review ?? reviewArticle;
   const media = overrides.media ?? processArticleImage;
   const save = overrides.save ?? saveArticle;
@@ -118,7 +121,14 @@ export async function processArticle(
 
   const category = gate.decision.category;
   const originalTitle = scraped.article.title || candidate.originalTitle;
-  const editorInput = { category, originalTitle, articleText: scraped.article.text };
+  const brief = await research({ title: originalTitle, text: scraped.article.text, category });
+  const researchFacts = brief.status === "ok" ? brief.facts : [];
+  const editorInput = {
+    category,
+    originalTitle,
+    articleText: scraped.article.text,
+    researchBrief: researchFacts,
+  };
   const edited = await synthesize(editorInput);
 
   if (edited.status === "error") {
@@ -147,6 +157,7 @@ export async function processArticle(
   }
 
   const reviewed = await review(edited.article, scraped.article.text, {
+    researchBrief: researchFacts,
     regenerate: async (issues: string[]): Promise<EditorOut> => {
       const retry = await synthesize(editorInput);
       if (retry.status === "error") throw new Error(`Retry Redaktora nieudany (${issues.length} uwag): ${retry.error}`);
