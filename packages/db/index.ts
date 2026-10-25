@@ -38,5 +38,6 @@ export async function withTransaction<T>(db: Pool, fn: (client: PoolClient) => P
 }
 
 export * from "./queries.js";
+export * from "./persist.js";
 export { slugify } from "./slug.js";
 export { queries };

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
 import {
   checkUrlDuplicate,
@@ -12,6 +12,7 @@ import {
   syncTags,
 } from "./queries.js";
 import { createPool, withTransaction } from "./index.js";
+import { rejectArticle, saveArticle } from "./persist.js";
 import type { Pool } from "pg";
 
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -419,5 +420,238 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
     );
     expect(rows[0]!.is_active).toBe(false);
     expect(rows[0]!.total).toBe("3");
+  });
+
+  it("saveArticle: published z tagami, obrazem i published_at", async () => {
+    const result = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/persist-pub",
+      categoryName: "Agroenergetyka",
+      title: "Agri-PV w praktyce",
+      contentHtml: "<p>Treść</p>",
+      tldr: ["a", "b", "c"],
+      techSummary: { podmiot: "P", technologia: "T", cel_wdrozenia: "C" },
+      imageUrl: "https://media.kombain.pl/articles/agri-pv.webp",
+      tags: ["Agri-PV", "agri-pv", "OZE"],
+    });
+
+    expect(result).toMatchObject({ status: "published", slug: "agri-pv-w-praktyce" });
+    if (result.status !== "published") return;
+
+    const { rows } = await db.query<{
+      status: string;
+      published_at: Date | null;
+      category_id: string;
+      image_url: string;
+      count: string;
+    }>(
+      `SELECT a.status, a.published_at, a.category_id, a.image_url,
+              (SELECT COUNT(*)::text FROM article_tags t WHERE t.article_id = a.id) AS count
+       FROM articles a WHERE a.id = $1`,
+      [result.articleId]
+    );
+    expect(rows[0]!.status).toBe("published");
+    expect(rows[0]!.published_at).toBeInstanceOf(Date);
+    expect(rows[0]!.category_id).toBe(categoryId);
+    expect(rows[0]!.image_url).toContain("media.kombain.pl");
+    expect(rows[0]!.count).toBe("2");
+  });
+
+  it("saveArticle: draft ma needs_human_check i brak published_at", async () => {
+    const result = await saveArticle(txPool, {
+      status: "draft",
+      sourceId: null,
+      sourceUrl: "https://a.pl/persist-draft",
+      categoryName: "Agroenergetyka",
+      title: "Szkic",
+      contentHtml: "<p>Treść</p>",
+      needsHumanCheck: true,
+    });
+
+    expect(result.status).toBe("draft");
+    if (result.status !== "draft") return;
+
+    const { rows } = await db.query<{ published_at: Date | null; needs_human_check: boolean; status: string }>(
+      "SELECT published_at, needs_human_check, status FROM articles WHERE id = $1",
+      [result.articleId]
+    );
+    expect(rows[0]).toMatchObject({ published_at: null, needs_human_check: true, status: "draft" });
+  });
+
+  it("saveArticle: kolizja sluga → 4-znakowy suffix, oba wiersze zostają", async () => {
+    const first = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/slug-1",
+      categoryName: "Agroenergetyka",
+      title: "Ten sam tytuł",
+      contentHtml: "<p>A</p>",
+    });
+    const second = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/slug-2",
+      categoryName: "Agroenergetyka",
+      title: "Ten sam tytuł",
+      contentHtml: "<p>B</p>",
+    });
+
+    expect(first.status).toBe("published");
+    expect(second.status).toBe("published");
+    if (second.status !== "published") return;
+    expect(second.slug).toMatch(/^ten-sam-tytul-[a-z0-9]{4}$/);
+
+    const { rows } = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM articles");
+    expect(rows[0]!.count).toBe("2");
+  });
+
+  it("saveArticle: kategoria spoza enuma → blocked, bez wiersza", async () => {
+    const result = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/bad-category",
+      categoryName: "Rolnictwo",
+      title: "Zła kategoria",
+      contentHtml: "<p>A</p>",
+    });
+
+    expect(result.status).toBe("blocked");
+    if (result.status === "blocked") expect(result.reason).toContain("Rolnictwo");
+
+    const { rows } = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM articles");
+    expect(rows[0]!.count).toBe("0");
+  });
+
+  it("saveArticle: rejected blokuje retry (dropped, stary wiersz nietknięty)", async () => {
+    await rejectArticle(txPool, {
+      title: "Odrzucony",
+      sourceUrl: "https://a.pl/persist-rejected",
+      reason: "is_relevant=false",
+      sourceId: null,
+    });
+    const result = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/persist-rejected",
+      categoryName: "Agroenergetyka",
+      title: "Próba",
+      contentHtml: "<p>A</p>",
+    });
+
+    expect(result.status).toBe("dropped");
+    const { rows } = await db.query<{ status: string; title: string }>(
+      "SELECT status, title FROM articles WHERE source_url = 'https://a.pl/persist-rejected'"
+    );
+    expect(rows[0]).toMatchObject({ status: "rejected", title: "Odrzucony" });
+  });
+
+  it("saveArticle: retry tego samego URL aktualizuje wiersz (bez dubli)", async () => {
+    const first = await saveArticle(txPool, {
+      status: "draft",
+      sourceId: null,
+      sourceUrl: "https://a.pl/persist-retry",
+      categoryName: "Agroenergetyka",
+      title: "Wersja 1",
+      contentHtml: "<p>A</p>",
+    });
+    const second = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/persist-retry",
+      categoryName: "Agroenergetyka",
+      title: "Wersja 2",
+      contentHtml: "<p>B</p>",
+    });
+
+    expect(first.status).toBe("draft");
+    expect(second.status).toBe("published");
+    if (first.status !== "draft" || second.status !== "published") return;
+    expect(second.articleId).toBe(first.articleId);
+
+    const { rows } = await db.query<{
+      status: string;
+      title: string;
+      slug: string;
+      published_at: Date | null;
+      needs_human_check: boolean;
+    }>("SELECT status, title, slug, published_at, needs_human_check FROM articles WHERE id = $1", [second.articleId]);
+
+    expect(rows[0]).toMatchObject({
+      status: "published",
+      title: "Wersja 2",
+      slug: "wersja-2",
+      needs_human_check: false,
+    });
+    expect(rows[0]!.published_at).toBeInstanceOf(Date);
+
+    const { rows: countRows } = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM articles");
+    expect(countRows[0]!.count).toBe("1");
+  });
+
+  it("saveArticle: piąta kolizja sluga → blocked bez wyjątku i bez nowego wiersza", async () => {
+    await insertArticle(db, {
+      ...BASE,
+      categoryId,
+      title: "Ten sam tytuł",
+      slug: "ten-sam-tytul",
+      sourceUrl: "https://a.pl/collision-1",
+    });
+    await insertArticle(db, {
+      ...BASE,
+      categoryId,
+      title: "Ten sam tytuł",
+      slug: "ten-sam-tytul-0000",
+      sourceUrl: "https://a.pl/collision-2",
+    });
+
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const result = await saveArticle(txPool, {
+        status: "published",
+        sourceId: null,
+        sourceUrl: "https://a.pl/collision-3",
+        categoryName: "Agroenergetyka",
+        title: "Ten sam tytuł",
+        contentHtml: "<p>A</p>",
+      });
+
+      expect(result).toEqual({ status: "blocked", reason: "Nie udało się dobrać unikalnego slug" });
+    } finally {
+      random.mockRestore();
+    }
+
+    const { rows } = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM articles");
+    expect(rows[0]!.count).toBe("2");
+
+    const next = await saveArticle(txPool, {
+      status: "published",
+      sourceId: null,
+      sourceUrl: "https://a.pl/collision-4",
+      categoryName: "Agroenergetyka",
+      title: "Inny tytuł",
+      contentHtml: "<p>B</p>",
+    });
+    expect(next.status).toBe("published");
+  });
+
+  it("rejectArticle: duplikat URL → dropped bez nowego wiersza", async () => {
+    const first = await rejectArticle(txPool, {
+      title: "Krótki",
+      sourceUrl: "https://a.pl/reject-dup",
+      reason: "Tekst zbyt krótki (<800 znaków)",
+      sourceId: null,
+    });
+    const second = await rejectArticle(txPool, {
+      title: "Krótki 2",
+      sourceUrl: "https://a.pl/reject-dup",
+      reason: "x",
+      sourceId: null,
+    });
+
+    expect(first.dropped).toBe(false);
+    expect(first.articleId).toBeTruthy();
+    expect(second.dropped).toBe(true);
+    expect(second.articleId).toBeNull();
   });
 });
