@@ -67,8 +67,11 @@ CREATE TABLE tags (
 );
 
 -- 5. Tabela Łącząca Artykuły i Tagi (Relacja M:N)
+-- Jednokolumnowy PK jest wymagany przez Directus 10 (inaczej ignoruje kolekcję);
+-- para (article_id, tag_id) pozostaje unikalna.
 CREATE TABLE article_tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     article_id UUID NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (article_id, tag_id)
+    UNIQUE (article_id, tag_id)
 );

@@ -5,7 +5,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 
 ## TERAZ
 
-- [ ] F1-T2 Directus: nowa baza `kombain` (kit w `deploy/` gotowy) + repoint Directusa + relacje wizualne + rola read-only + token + seed 3 źródeł — [CRITICAL]
 - [ ] F2-T1 `ingestion.ts` (rss-parser + ScrapingAnt + cheerio, max 15, normalizacja URL, `route-source`) + testy — [CRITICAL]
 - [ ] F2-T2 `scraper.ts` (fetch UA 10s → fallback, Readability, og:image, hard filter 800) + testy — [CRITICAL]
 
@@ -17,4 +16,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 - [ ] F2-T6 `orchestrator + pipeline + index + config + Dockerfile + cron VPS` + run testowy na żywych źródłach (limit 1-2) — [CRITICAL]
 - [ ] F3-T1 `apps/web` Astro Hybrid + `directus.ts` + strony `/`, `/kategoria/[slug]`, `/artykul/[slug]` + Cache headers — [SAFE]
 - [ ] F3-T2 R2 `media.kombain.pl` + defaulty kategorii + webhook deploy — [SAFE]
+- [ ] OPT późn.: M2M alias „tags” w Directusie (edycja tagów w widoku artykułu) — [SAFE]
+- [ ] OPT późn.: naprawa `scripts/verify.sh` (maskowanie exit code przez `| head`/`| tail`) — [SAFE]
 - [ ] OPT późn.: ewaluacja Deepseek V4.1 + Search jako alternatywy R3 (poza zakresem MVP)

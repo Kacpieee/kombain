@@ -250,7 +250,7 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
     expect(first.map((t) => t.name)).toContain("rolnictwo precyzyjne");
   });
 
-  it("linkArticleTags: idempotentny (ON CONFLICT DO NOTHING)", async () => {
+  it("linkArticleTags: idempotentny po parze (article_id, tag_id)", async () => {
     const articleId = await insertArticle(db, {
       ...BASE,
       categoryId,
@@ -268,6 +268,26 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
       [articleId]
     );
     expect(rows[0]!.count).toBe("1");
+  });
+
+  it("article_tags: duplikat pary rzuca 23505, wiersz ma UUID id", async () => {
+    const articleId = await insertArticle(db, {
+      ...BASE,
+      categoryId,
+      title: "Para",
+      slug: "para",
+      sourceUrl: "https://a.pl/para",
+    });
+    const [tag] = await syncTags(db, [{ name: "rtk", slug: "rtk" }]);
+
+    await linkArticleTags(db, articleId!, tag!.id);
+
+    await expect(
+      db.query("INSERT INTO article_tags (article_id, tag_id) VALUES ($1, $2)", [articleId, tag!.id])
+    ).rejects.toMatchObject({ code: "23505" });
+
+    const { rows } = await db.query<{ id: string }>("SELECT id FROM article_tags WHERE article_id = $1", [articleId]);
+    expect(rows[0]!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it("fetchHistoricalContext30d: tylko published z 30 dni", async () => {

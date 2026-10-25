@@ -97,27 +97,68 @@ docker logs --tail 40 n8n-docker-directus-1
 Pierwszy start utworzy tabele `directus_*` **w bazie `kombain`**. Stara baza pozostaje nietknięta.
 **Uwaga:** od `\password` do restartu Directus jest krótkie okno niedostępności (kilkadziesiąt sekund) — CMS nie połączy się ze starą bazą ze starym hasłem.
 
-## 6. Directus: model i relacje (UI)
+## 6. Directus: rejestracja kolekcji i relacje
 
-1. `https://cms.kombain.pl`, zaloguj się jako admin.
-2. **Settings → Data Model**. Jeśli lista jest pusta: **Settings → Data Model → „Refresh schema”** (Directus 10 introspektuje tabele zewnętrzne; brak metadanych kolekcji objawia się pustą listą).
-3. Kolekcje: `articles`, `sources`, `categories`, `tags`, `article_tags`.
-4. Relacje (display template = „wizualność” w panelu):
-   - `articles.category_id` → `categories`, Many-to-One, display `{{name}}`
-   - `articles.source_id` → `sources`, Many-to-One, display `{{name}}`
-   - `article_tags` → Many-to-Many `articles` ↔ `tags`, display `{{name}}`
-5. Sprawdź: `articles.tldr` i `articles.tech_summary` = JSON, `status` ∈ `published/rejected/draft`.
+Tabele utworzone przez `schema.sql` są dla Directusa **unmanaged** (`meta: null`) — introspektuje je, ale nie pokazuje w Data Model. `POST /collections` zwraca wtedy `400 already exists`; działa **`PATCH /collections/:name`** z `meta`.
+
+```bash
+cd ~/kombain-deploy
+bash deploy/scripts/register-collections.sh
+```
+
+Skrypt pyta o hasło admina (`read -s`, bez historii), rejestruje 5 kolekcji i weryfikuje `meta: true` dla każdej. Jest idempotentny — można go uruchamiać wielokrotnie.
+
+Po rejestracji: **Settings → Data Model** → 5 kolekcji (`articles`, `categories`, `sources`, `tags`, `article_tags`), z display template `{{title}}` / `{{name}}`.
+
+Relacje:
+- `articles.category_id` i `articles.source_id` — Directus rozpoznaje Many-to-One **z istniejących FK**; nie tworzymy ich przez API (`POST /relations` zwróci `already has an associated relationship`).
+- `article_tags` — dwa Many-to-One (`article_id → articles`, `tag_id → tags`), dostępne przez `article_tags.tag_id.name`.
+- **Ograniczenie:** alias Many-to-Many „tags” w widoku artykułu nie jest skonfigurowany (API Directusa nie pozwala dopisać powiązania junction do relacji wyprowadzonej z FK). Tagi edytuje się w kolekcji `article_tags`; front czyta je przez `article_tags.tag_id.name`.
+
+Sprawdź też: `articles.tldr` i `articles.tech_summary` = JSON, `status` ∈ `published/rejected/draft`.
+
+### Migracja bazy utworzonej przed `article_tags.id`
+
+Bazy postawione wcześniejszą wersją `schema.sql` mają złożony PK `(article_id, tag_id)` — Directus 10 takiej kolekcji nie widzi. `init-db.sh` nie rusza istniejącego schematu, więc migrację wykonuje się raz, ręcznie (tabele zwykle puste):
+
+```bash
+docker exec n8n-docker-postgres-1 psql -U n8n -d kombain -v ON_ERROR_STOP=1 -c "BEGIN; ALTER TABLE article_tags DROP CONSTRAINT article_tags_pkey, ADD COLUMN id UUID NOT NULL DEFAULT uuid_generate_v4(), ADD CONSTRAINT article_tags_pkey PRIMARY KEY (id), ADD CONSTRAINT article_tags_article_id_tag_id_key UNIQUE (article_id, tag_id); COMMIT;"
+```
+
+To jedyne miejsce w runbooku, gdzie świadomie usuwamy **constraint** (nie tabelę, nie dane). Po `ALTER` zrestartuj Directusa i uruchom `register-collections.sh`.
 
 ## 7. Rola read-only + token (UI)
 
-1. **Settings → Roles & Permissions → Create Role**: `Public API`, bez dostępu do appki.
+Directus 10 **nie ma pola „User Type”** (to było w v9). „API user” = rola bez App Access + statyczny Token.
+
+1. **Settings → Roles & Permissions → Create Role**: `Public API`; **Admin Access: OFF**, **App Access: OFF**.
 2. Uprawnienia: `articles` → **Read** z filtrem `{"status":{"_eq":"published"}}`; `categories`, `tags`, `article_tags` → Read; `sources` → brak.
-3. **User Directory → Create User**: typ **API**, rola `Public API` → wygeneruj **static token** (widoczny raz).
-4. Token wyłącznie w env VPS jako `DIRECTUS_PUBLIC_READ_TOKEN`.
+3. **User Directory → Create User**: email `api@kombain.pl`, rola `Public API` (hasło dowolne — nieużywane).
+4. Otwórz użytkownika → sekcja **Token** → **Generate** → skopiuj → **Save**.
+5. Token wyłącznie w env VPS — bez echa, bez historii powłoki i bez nadpisywania istniejących zmiennych:
+
+```bash
+read -rsp "Directus token: " DTOKEN; echo
+DTOKEN="$DTOKEN" python3 - <<'PY'
+import os, pathlib
+p = pathlib.Path.home() / "kombain-deploy" / ".env"
+p.parent.mkdir(parents=True, exist_ok=True)
+lines = [l for l in (p.read_text().splitlines() if p.exists() else []) if not l.startswith("DIRECTUS_PUBLIC_READ_TOKEN=")]
+lines.append("DIRECTUS_PUBLIC_READ_TOKEN=" + os.environ["DTOKEN"])
+p.write_text("\n".join(lines) + "\n")
+p.chmod(0o600)
+print("zapisano", p)
+PY
+unset DTOKEN
+```
+
+Alternatywa bez UI: `PATCH /users/:id` z polem `token` (patrz historia tasku F1-T2).
 
 ## 8. Weryfikacja
 
 ```bash
+set -a; . ~/kombain-deploy/.env; set +a
+
 docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "\dt"
 docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "SELECT count(*) AS kategorie FROM categories;"
 docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "SELECT name, url, is_active FROM sources ORDER BY name;"
@@ -125,6 +166,8 @@ docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "SELECT nam
 curl -s -o /dev/null -w '%{http_code}\n' https://cms.kombain.pl/items/articles
 curl -s -H "Authorization: Bearer $DIRECTUS_PUBLIC_READ_TOKEN" "https://cms.kombain.pl/items/articles?limit=5&fields=title,status"
 ```
+
+`set -a; . .env` jest konieczne — bez tego `$DIRECTUS_PUBLIC_READ_TOKEN` jest pusty, a wklejanie tokena inline trafia do historii/`ps`.
 
 Oczekiwane: 5 tabel + `directus_*`; 6 kategorii; 3 źródła. Bez tokena: `403` **albo** `200` z pustą listą (zależy od uprawnień roli `public`) — oba wyniki są poprawne, jeśli z tokenem widać wyłącznie `status=published`.
 
@@ -138,6 +181,8 @@ COMPOSE_BAK="$(ls -t docker-compose.yml.bak-* | head -1)"
 echo "$COMPOSE_BAK"
 grep DB_PASSWORD "$COMPOSE_BAK"
 ```
+
+Hasło pojawi się na ekranie — to świadome, jednorazowe odczytanie backupu na VPS (nie wklejaj go do czatu ani do repo).
 
 Odczytane stare hasło ustaw z powrotem w roli:
 
@@ -170,4 +215,6 @@ Nowa baza `kombain` zostaje (nie zawiera nic, co blokowałoby powrót), stara `k
 | Directus: `password authentication failed` | hasło w compose nie zgadza się z `\password`; po rollbacku przywróć hasło roli (sekcja 9) |
 | Directus: `permission denied for schema public` | schemat założony inną rolą niż `kombain_user`; sprawdź ownera tabel |
 | Directus: `relation "directus_..." does not exist` | trwa pierwsza migracja — odczekaj, sprawdź logi |
+| Data Model pokazuje 0 kolekcji | tabele są unmanaged — uruchom `deploy/scripts/register-collections.sh` (PATCH meta) |
+| `POST /collections` → `400 already exists` | to normalne dla istniejącej tabeli; użyj PATCH (skrypt robi to za Ciebie) |
 | Seed nie dodał źródeł | źródło już istnieje (`ON CONFLICT (url)`) — poprawne zachowanie |

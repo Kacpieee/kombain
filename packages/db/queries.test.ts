@@ -131,11 +131,11 @@ describe("queries: parametryzacja i kontrakt SQL", () => {
     expect(calls[1]?.values).toEqual(["rtk", "rtk"]);
   });
 
-  it("linkArticleTags: ON CONFLICT DO NOTHING, oba id w values", async () => {
+  it("linkArticleTags: ON CONFLICT po parze (article_id, tag_id), oba id w values", async () => {
     const { db, calls } = makeDb();
     await linkArticleTags(db, "a1", "t1");
 
-    expect(calls[0]?.sql).toContain("ON CONFLICT DO NOTHING");
+    expect(calls[0]?.sql).toContain("ON CONFLICT (article_id, tag_id) DO NOTHING");
     expect(calls[0]?.values).toEqual(["a1", "t1"]);
   });
 

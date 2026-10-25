@@ -1,53 +1,49 @@
-# Final report — F1-T2 kit (baza `kombain` + seed + runbook Directus)
+# Final report — F1-T2 (Directus + baza `kombain` na VPS)
 
 ## Status
-Done with risks (Mode: CRITICAL) — część repo-side gotowa i przetestowana; wykonanie na VPS należy do użytkownika (brak dostępu SSH z tego środowiska).
+Done (Mode: CRITICAL) — wykonane na VPS przez użytkownika, potwierdzone outputami; repo dogoniło produkcję.
 
 ## Summary
-Powstał wykonywalny kit deployu: idempotentny `init-db.sh` z allowlistą bazy `kombain` (zero `DROP`, zero operacji na `n8n`/`postgres`/kcal), seed 3 działających źródeł RSS, zapytania weryfikacyjne oraz runbook repointu Directusa 10.13 z backupem, preflightem rotacji hasła i pełnym rollbackiem.
+Nowa baza `kombain` (5 tabel, 6 kategorii, 3 źródła) na istniejącym PostgreSQL 16, Directus 10.13 przestawiony z archiwalnej `kombain_db`, 5 kolekcji zarejestrowanych w metadanych, rola `Public API` + token read-only. `article_tags` dostał `id` PK wymagany przez Directusa.
 
-## Changes
-- `deploy/scripts/init-db.sh` — allowlist `kombain` (+`KOMBAIN_ALLOW_TEST_DB=1` dla `kombain_test*`), preflight połączenia superusera, detekcja 5 tabel przez `to_regclass`, stop przy częściowym schemacie, test logowania ownera (pg_hba), `--seed` = tylko seed, odrzucanie nieznanego pierwszego argumentu (`--seed` jedyną flagą)
-- `deploy/sql/seed-sources.sql` — AgFunderNews, Future Farming, PrecisionAg (HTTP 200 + itemy); `ON CONFLICT (url) DO NOTHING`
-- `deploy/sql/verify.sql` — liczniki tabel + constrainty; `to_regclass` zamiast `::regclass`
-- `deploy/README.md` — placeholdery zamiast IP/ścieżek, backup `pg_dump`, preflight `DB_POSTGRESDB_USER` + `pg_stat_activity`, trzy pola env, rollback z przywróceniem hasła roli, fallback „Refresh schema”, 403 **albo** 200 puste
-- `packages/db/schema.pg.test.ts` — +2 testy seeda (idempotencja, brak nadpisania `is_active=false`)
-- `.gitignore` — `deploy/.env`, `deploy/*.local.yml`
-- `docs/plans.md`, `docs/STATUS.md`
+## Changes (repo)
+- `packages/db/schema.sql` — `article_tags.id UUID PK` + `UNIQUE(article_id, tag_id)` (zatwierdzona zmiana DDL)
+- `packages/db/queries.ts` — `linkArticleTags` z `ON CONFLICT (article_id, tag_id) DO NOTHING`
+- `packages/db/schema.pg.test.ts` — +1 test (duplikat pary → `23505`, `id` = UUID); 22/22
+- `deploy/scripts/register-collections.sh` — idempotentna rejestracja 5 kolekcji przez `PATCH /collections/:name` z `meta` (POST zwraca 400 dla istniejących tabel); hasło przez `read -s`
+- `deploy/README.md` — sekcja rejestracji kolekcji, relacje z FK, ograniczenie M2M, rola bez „User Type”, token przez `read -s`, troubleshooting „0 kolekcji”
+- `docs/plans.md` (F1-T2 usunięty), `docs/STATUS.md`
 - Branch: `main`
 
-## Verification (liczbowo, po ostatniej poprawce)
+## Verification (liczbowo)
 - scripts/verify.sh: **pass** (exit 0)
-- guardrails (sekrety/SQL): **pass** (brak sekretów; seed i verify bez interpolacji)
+- guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **32 passed, 0 failed, 21 skipped** (PG gated)
-- PG-docker (podman, `postgres:16`): **21 passed, 0 failed**
-- E2E `init-db.sh`: default → 5 tabel, 6 kategorii, 3 źródła, 2 constrainty; `--seed` → bez zmian; `KOMBAIN_DB=kombain_db` → **exit 1**; `kombain_test_1` bez gate → **exit 1**, z gate → OK; w kontenerze tylko `kombain`, `kombain_test_1`, `n8n`, `postgres`
+- vitest: **32 passed, 0 failed, 22 skipped** (PG gated)
+- PG-docker (podman, `postgres:16`): **22 passed, 0 failed**
+- E2E `register-collections.sh` (Directus 10.13 + PG 16): run 1 i run 2 → 5/5 `ok`, `zarejestrowane: article_tags, articles, categories, sources, tags`, 29 tabel bez zmian
+- VPS (potwierdzone przez użytkownika): `kombain` = 5 tabel / 6 kategorii / 3 źródeł; `kombain_db` = 29 tabel (nietknięta); `Public API`: `articles=200`, `sources=403`; dump `kombain_db` 93K, `TABLE DATA=29`, `DUMP OK`, SHA-256 zapisany
 
 ## Review Loop Audit
-- Liczba rund Reviewera: 3
+- Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 5 blokerów (allowlist bazy, `DB_PASSWORD`, rollback hasła, preflight n8n, brak `pg_dump`)
-  - Runda 2: Request changes — 2 blokery (rollback nadal nie przywracał hasła roli; niespójny final-report)
-  - Runda 3: **Approve** (0 blokerów; 6 ryzyk nieblokujących)
+  - Runda 1: Request changes — 2 blokery (false-green rejestracji: PATCH nieistniejącej kolekcji tworzył fantom; token w historii powłoki + `>` obcinał `.env`)
+  - Runda 2: **Approve** — 0 blokerów; blokery potwierdzone eksperymentalnie (m.in. usunięcie `ensure_table` odtwarza fantom, `DROP TABLE` → exit 3 bez PATCH)
+- Po werdykcie: wyłącznie zmiany docs-only w `deploy/README.md` (eksport env przed `curl`, sekcja migracji legacy `article_tags`, ostrzeżenie o haśle w §9); zero zmian w kodzie/SQL/testach; `verify.sh` uruchomiony ponownie
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Rotacja hasła `kombain_user` wymaga przywrócenia hasła roli przy rollbacku (sekcja 9 runbooka); okno niedostępności CMS = kilkadziesiąt sekund.
-- Preflight `pg_stat_activity` widzi tylko żywe sesje — połączenia on-demand spoza n8n nie będą wykryte.
-- `init-db.sh` nie tworzy ról (świadomie) i zakłada `local ... trust` w `pg_hba.conf`; przy innym auth skrypt zatrzyma się z czytelnym komunikatem.
-- Directus 10.13 na PG 16.14 — kompatybilność niepotwierdzona w repo; rollback = przywrócenie hasła roli + compose + restart Directusa (okno kilkudziesięciu sekund).
-- `scripts/verify.sh` maskuje kody wyjścia `tsc`/`vitest` pipe'em — bug zastany, poza scope; liczby potwierdzone osobnymi uruchomieniami.
-- Stara `kombain_db` czeka na `pg_dump` po stronie VPS (komenda w runbooku, sekcja 2).
+- **M2M alias „tags”** w widoku artykułu nie istnieje — Directus nie pozwala dopiąć junction do relacji wyprowadzonej z FK (403). Tagi: edycja przez kolekcję `article_tags`, odczyt przez `article_tags.tag_id.name`. Osobny task OPT.
+- `PUBLIC_URL` warning w logach Directusa — kosmetyka, do dopisania w compose.
+- Directus 10.13 jest 55 wersji za aktualną — upgrade osobnym taskiem.
+- `scripts/verify.sh` nadal maskuje exit code `tsc`/`vitest` pipe'em; liczby potwierdzane osobno.
+- Stara `kombain_db` czeka na decyzję o usunięciu po cutoverze (dump poza VPS do zrobienia po stronie użytkownika).
+- Skrypt rejestracji nie wykrywa **zastanych** fantomów (`directus_collections` bez tabeli) — sprząta je tylko ręcznie; na VPS fantomów nie było (5/5 z `schema`).
+- Brak indeksu po `article_tags.tag_id` — przyszłe „artykuły po tagu” zrobią seq scan; osobna zgoda na DDL, jeśli zajdzie potrzeba.
 
 ## Out of scope (celowo nietknięte)
-- Wykonanie na VPS (baza/Directus/token) — po stronie użytkownika.
-- Upgrade Directusa do 11, `media.ts`/R2, prompty/LLM, `apps/web`, KIEDYŚ.
-- Bazy `n8n`, `postgres`, stack kcal (kontener `kcal-*`, port 5433).
+- Upgrade Directusa, M2M alias, `media.ts`/R2, prompty/LLM, `apps/web`, F2+.
+- Bazy `n8n`, `postgres`, stack kcal.
 
 ## Next steps
-1. Lokalnie: `tar | ssh` z sekcji 1 runbooka.
-2. VPS: `bash deploy/scripts/init-db.sh` (baza + schemat + seed) → wklej output weryfikacji.
-3. VPS: preflight n8n, `\password kombain_user`, zmiana 3 pól w compose, restart Directusa, logi.
-4. UI: relacje, rola `Public API`, token → env VPS.
-5. Po zielonej weryfikacji: F1-T2 zamknięty, kolejka → F2-T1 `ingestion.ts`.
+- F2-T1 `ingestion.ts` (rss-parser + ScrapingAnt + cheerio, max 15, normalizacja URL) + testy.

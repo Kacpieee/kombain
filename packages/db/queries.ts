@@ -157,10 +157,11 @@ export async function syncTags(db: Queryable, tags: TagInput[]): Promise<TagRow[
   return result;
 }
 
-// 8. Link artykuł–tag (idempotentny)
+// 8. Link artykuł–tag (idempotentny po parze, nie po PK)
 export async function linkArticleTags(db: Queryable, articleId: string, tagId: string): Promise<void> {
-  await db.query(`INSERT INTO article_tags (article_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-    articleId,
-    tagId,
-  ]);
+  await db.query(
+    `INSERT INTO article_tags (article_id, tag_id) VALUES ($1, $2)
+     ON CONFLICT (article_id, tag_id) DO NOTHING`,
+    [articleId, tagId]
+  );
 }
