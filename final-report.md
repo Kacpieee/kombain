@@ -1,44 +1,44 @@
-# Final report — F2-T2 (`scraper.ts`)
+# Final report — F2-T3 (`llm.ts + gatekeeper`)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Summary
-Powstał smart fetch artykułu: bezpośredni `fetch` z UA Chrome i timeoutem 10 s, fallback na ScrapingAnt przy `403/429/503` lub sygnaturze Cloudflare (timeout 30 s), ekstrakcja przez `linkedom + @mozilla/readability`, `og:image` z fallbackiem na pierwszy obraz w artykule oraz twardy filtr `<800` znaków → `rejected` z dokładnym powodem. Odpowiedzi nie-2xx (poza blokadami) oraz ściana CF po fallbacku kończą się `error`, nie `ok`/`rejected`.
+Powstał Bramkarz: prompt z bazą wiedzy z 30 dni (bez PocketBase), JSON Schema dla Gemini Structured Outputs 1:1 z Zod, `classifyArticle` z wstrzykiwanym `generate` (testy bez API). `is_duplicate || !is_relevant` → `rejected` z powodem; kategoria spoza enuma / błędny JSON / błąd modelu → `error` (blokada persist), nigdy cichy publish.
 
 ## Changes
-- `apps/worker/src/services/scraper.ts` — `isBlockedResponse` (szersze markery ścian), `extractOgImage` (tylko obrazy z `<article>`, `data-src`/`data-original`), `scrapeArticle`; wynik `ok | rejected | error`, `fetchedVia` do licznika `scrape_fallback_used`
-- `apps/worker/src/services/scraper.test.ts` — 20 testów bez sieci (blokady, fallback, 404/500, ściana po fallbacku, brak klucza, ekstrakcja, og:image, próg 800)
-- `apps/worker/package.json` — `linkedom ^0.18`, `@mozilla/readability ^0.6` (Dokumentacja §4 KROK 2 / AGENTS §1)
-- `docs/plans.md` (F2-T2 usunięty, TERAZ → F2-T3), `docs/STATUS.md`
+- `apps/worker/src/prompts.ts` — `GatekeeperPromptInput`, `buildGatekeeperPrompt` (reguły hard filtru, pełna lista 6 kategorii, historia 30 dni skrócona do 300 znaków na wpis)
+- `apps/worker/src/services/llm.ts` — `GATEKEEPER_RESPONSE_SCHEMA`, `GenerateFn`, `classifyArticle` (accepted/rejected/error), `defaultGenerate` (dynamiczny import `@google/genai`, `responseMimeType: application/json`, `temperature: 0`), `describeError` (Zod issues bez wycieku promptu)
+- `apps/worker/src/services/llm.test.ts` — 16 testów schematu/promptu/routingu stanów, zero wołań Gemini
+- `docs/plans.md` (F2-T3 usunięty, TERAZ → F2-T4), `docs/STATUS.md`
 - Branch: `main`
 
 ## Verification (liczbowo, po ostatniej poprawce)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **72 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20 + scraper 20)
+- vitest: **88 passed, 0 failed, 22 skipped** (slug 12 + parser 10 + queries 10 + ingestion 20 + scraper 20 + gatekeeper 16)
 - PG-docker: **22 passed** (bez zmian)
-- Wszystkie testy scrapera na fixture'ach HTML i wstrzykiwanych `fetchDirect`/`fetchScrapingAnt`; zero sieci
+- Zero wywołań Gemini/ScrapingAnt w testach (wstrzykiwany `generate`)
 
 ## Review Loop Audit
-- Liczba rund Reviewera: 2
+- Liczba rund Reviewera: 1
 - Przebieg rund:
-  - Runda 1: Request changes — 3 blokery (nie-2xx z długim body → `ok`/`rejected`; brak re-checku ściany CF po fallbacku; brak testów tych ścieżek)
-  - Runda 2: **Approve** — 0 blokerów; wszystkie 3 blokery potwierdzone jako FIXED, w tym przez symulację „bez poprawki”
+  - Runda 1: **Approve** (0 blokerów; 8 ryzyk nieblokujących)
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Readability bywa czuły na nietypowy HTML (SPA/AMP) → `error`, nie `rejected`; orchestrator musi rozróżniać te stany (dobry temat nie może trafić do `rejected`).
-- Klucz ScrapingAnt w query (wymóg API), ale komunikaty błędów są bez query, a klucz redagowany także w formie percent-encoded.
-- Ściana Cloudflare z markerem spoza listy i krótką treścią może nadal wyjść jako `rejected` — lista markerów jest rozszerzana reaktywnie; docelowo licznik „podejrzanie krótkich” w F2-T6.
-- `charCount` liczony po normalizacji białych znaków (`replace(/\s+/g," ")`) — minimalnie bardziej restrykcyjny niż `textContent.trim().length` ze specyfikacji.
-- Względny `og:image` rozwiązywany względem `sourceUrl`, nie finalnego URL po redirectach.
-- `title` z Readability może wyjść pusty (brak `<title>`/`h1`) — fallback na `originalTitle` musi być w pipeline (F2-T6).
-- Allowlista tagów HTML wraca jako wymóg R1 w F2-T4 (sanityzacja `content_html`).
+- Prompt nie przycina treści artykułu — przy bardzo długich tekstach rośnie koszt tokenów; limit długości wejścia do ustalenia w F2-T6 (config).
+- `GatekeeperSchema` dopuszcza dodatkowe pola i pusty `reason`; dla `rejected` pusty powód trafi do DB jako `""` — do zaostrzenia (`reason.min(1)`) po decyzji, czy chcemy blokować takie odpowiedzi.
+- Brak retry Bramkarza (zgodnie ze specyfikacją): błąd modelu = `draft`, więc temat nie ginie, ale wymaga kolejnego runu.
+- `responseSchema` jest ręcznym odpowiednikiem Zod (bez generatora) — rozjazd możliwy przy zmianie enuma; pilnuje tego test porównujący 6 kategorii.
+- `defaultGenerate` tworzy nowego klienta `GoogleGenAI` na każde wywołanie — do cache'owania w F2-T6, jeśli run będzie miał wiele artykułów.
+- Konflikt AGENTS §2.5 vs §2.8 dla `is_duplicate=true` (wiersz `rejected` vs ciche porzucenie) — `classifyArticle` zwraca całą decyzję, więc rozstrzygnięcie zapada w F2-T5/T6; musi być jawne, inaczej duplikat semantyczny zablokuje ponowienie.
+- Hard filter w promptcie nie jest asertowany w testach (tylko tytuł/URL/30 dni/enum) — przyszła edycja promptu może go wykasować bez czerwonego testu; do dopięcia przy F2-T4.
+- `describeError` przepuszcza surowy `message` z SDK — jeśli Gemini zwróci fragment promptu w błędzie, trafi on do logów; redakcja w F2-T6.
 
 ## Out of scope (celowo nietknięte)
-- `llm.ts`/gatekeeper, redaktor/review, media/R2, persist, Astro, `deploy/`.
+- Redaktor/review/factcheck (F2-T4), persist, media/R2, Astro, `deploy/`.
 
 ## Next steps
-- F2-T3 `llm.ts + gatekeeper`: 3.1 Flash-Lite, Zod enum 6 kategorii, historia 30 dni, `is_duplicate || !is_relevant` → `rejected`.
+- F2-T4 `editor + review + factcheck`: 1 szablon × 6 person, `external_refs[]`, R1/R2/R3 z groundingiem, `refuted/uncertain` → `draft` (+`needs_human_check`).

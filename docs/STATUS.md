@@ -6,9 +6,10 @@
 - F1-T2: baza `kombain` na VPS (5 tabel, 6 kategorii, 3 źródła), Directus 10.13 repointowany, 5 kolekcji z metadanymi, rola `Public API` + token (200/403); kit `deploy/` (init-db, register-collections, seed, runbook); `article_tags.id` PK + `UNIQUE(article_id, tag_id)`
 - F2-T1: `ingestion.ts` — `routeSource`, normalizacja URL (utm/fbclid/gclid, `&amp;`, fragmenty), RSS (rss-parser), scraper (ScrapingAnt + cheerio, selektor z DB), dedupe + limit 15; 20 testów bez sieci
 - F2-T2: `scraper.ts` — smart fetch (UA 10 s → fallback ScrapingAnt przy 403/429/503/CF), Readability (linkedom), `og:image` z fallbackiem na obraz artykułu (`data-src`), hard filter 800 → `rejected`, nie-2xx i ściana po fallbacku → `error`; 20 testów bez sieci
+- F2-T3: `llm.ts + gatekeeper` — `buildGatekeeperPrompt` (historia 30 dni, bez PocketBase), `GATEKEEPER_RESPONSE_SCHEMA` dla Gemini, `classifyArticle` z DI (accepted/rejected/error, kategoria spoza enuma → error); 16 testów bez API
 
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
-- F2-T3 `llm.ts + gatekeeper`
+- F2-T4 `editor + review + factcheck`
