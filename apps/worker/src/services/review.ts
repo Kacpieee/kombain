@@ -145,14 +145,25 @@ export function stripInferences(
 
   for (const sentence of targets) {
     let found = false;
+    const flexible = new RegExp(escapeRegex(sentence).replace(/\s+/g, "\\s+"), "i");
+
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]!;
       if (part.startsWith("<")) continue;
+
       if (part.includes(sentence)) {
         parts[i] = part.split(sentence).join("");
         found = true;
       }
+
+      // Fallback działa też na fragmencie po exact-match (warianty case/whitespace w tym samym węźle).
+      const current = parts[i]!;
+      if (flexible.test(current)) {
+        parts[i] = current.split(flexible).join("");
+        found = true;
+      }
     }
+
     (found ? removed : missed).push(sentence);
   }
 
@@ -164,6 +175,10 @@ export function stripInferences(
     .trim();
 
   return { html: cleaned, removed, missed };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Link źródła doklejany przez kod (nie przez LLM), z escapowaniem URL. */
@@ -253,9 +268,18 @@ export async function reviewArticle(
     cleanedHtml = stripped.html;
     removedInferences = stripped.removed;
     if (stripped.missed.length > 0) {
-      return draft("R2", [`Nie udało się wyciąć ${stripped.missed.length} wniosków bez dowodu`], article, cleanedHtml, {
-        removedInferences,
-      });
+      const samples = stripped.missed
+        .slice(0, 3)
+        .map((text) => text.slice(0, 120))
+        .join(" | ");
+      const suffix = stripped.missed.length > 3 ? ` … (+${stripped.missed.length - 3})` : "";
+      return draft(
+        "R2",
+        [`Nie udało się wyciąć ${stripped.missed.length} wniosków bez dowodu: ${samples}${suffix}`],
+        article,
+        cleanedHtml,
+        { removedInferences }
+      );
     }
   }
 

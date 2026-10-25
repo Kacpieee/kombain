@@ -56,3 +56,7 @@ Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumow
 ## Hotfix (po pierwszym dry-run na VPS)
 
 `dry_run` w JSONL zawiera teraz `stage`, `needsHumanCheck` i `issues` z review — bez tego nie dało się ustalić, dlaczego artykuł kończy się draftem. Test regresyjny w `orchestrator.test.ts`; `verify.sh` exit 0, Reviewer Approve.
+
+### Hotfix 2 (R2/atomy po pierwszym dry-run)
+
+`stripInferences` usuwa teraz **wszystkie** wystąpienia wniosku (także warianty case/whitespace w tym samym węźle) i pokazuje w `issues` do 3 próbek nieusuniętych zdań. Review: 3 rundy (2 blokery cichych leftovers), końcowo Approve.

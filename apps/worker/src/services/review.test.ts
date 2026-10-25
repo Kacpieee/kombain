@@ -154,6 +154,35 @@ describe("stripInferences", () => {
 
     expect(stripInferences(html, atoms).missed).toHaveLength(1);
   });
+
+  it("elastyczne białe znaki i wielkość liter nie blokują wycięcia", () => {
+    const html = "<p>Fakt ze źródła. Rynek   WZROŚNIE o 40%.</p>";
+    const atoms: R2Atom[] = [{ text: "Rynek wzrośnie o 40%.", type: "inference", evidence: "" }];
+
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.html).toBe("<p>Fakt ze źródła.</p>");
+  });
+
+  it("usuwa wszystkie wystąpienia wniosku (lead i konkluzja)", () => {
+    const html = "<p>Rynek wzrośnie o 40%.</p><p>Fakt.</p><p>Rynek wzrośnie o 40%.</p>";
+    const atoms: R2Atom[] = [{ text: "Rynek wzrośnie o 40%.", type: "inference", evidence: "" }];
+
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.html).not.toContain("40%");
+    expect(result.html).toContain("Fakt.");
+  });
+
+  it("exact + wariant case w tym samym akapicie: usuwa oba", () => {
+    const html = "<p>Rynek wzrośnie o 40%. RYNEK WZROŚNIE O 40%.</p>";
+    const atoms: R2Atom[] = [{ text: "Rynek wzrośnie o 40%.", type: "inference", evidence: "" }];
+
+    const result = stripInferences(html, atoms);
+    expect(result.removed).toHaveLength(1);
+    expect(result.missed).toEqual([]);
+    expect(result.html).not.toContain("40%");
+  });
 });
 
 describe("buildSourceLink", () => {
