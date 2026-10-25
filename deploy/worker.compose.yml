@@ -1,0 +1,22 @@
+# Worker w istniejącej sieci n8n-docker (VPS).
+# Uruchamiaj z ROOTA repo: docker compose -f deploy/worker.compose.yml run --rm worker
+# Sekrety trzymaj w deploy/worker.env (gitignore), nie w tym pliku.
+services:
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    container_name: kombain-worker
+    env_file: ./worker.env
+    networks:
+      - n8n-docker_default
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  n8n-docker_default:
+    external: true

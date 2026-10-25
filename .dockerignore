@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+dist
+.git
+archiwum
+docs
+deploy
+*.md
+.env
+.env.*

@@ -1,10 +1,29 @@
+import { pathToFileURL } from "node:url";
+import { createPool } from "@kombain/db";
 import { loadConfig } from "./config.js";
+import { runOnce } from "./orchestrator.js";
 
-export async function main(): Promise<void> {
-  const cfg = loadConfig();
-  console.log(JSON.stringify({ ok: true, lite: cfg.GEMINI_LITE_MODEL, pro: cfg.GEMINI_PRO_MODEL, max: cfg.MAX_PUBLISHED_PER_RUN }));
+export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  const config = loadConfig(env);
+  const pool = createPool(config.DIRECT_DATABASE_URL);
+
+  try {
+    const report = await runOnce(pool, config);
+    console.log(JSON.stringify({ event: "worker_done", published: report.published, draft: report.draft, rejected: report.rejected, errors: report.errors.length }));
+    return 0;
+  } finally {
+    await pool.end();
+  }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((e) => { console.error(e); process.exit(1); });
+const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
+if (import.meta.url === entry) {
+  main()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error: unknown) => {
+      console.error(JSON.stringify({ event: "worker_fatal", error: error instanceof Error ? error.message : String(error) }));
+      process.exitCode = 1;
+    });
 }

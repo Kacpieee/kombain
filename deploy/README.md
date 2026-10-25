@@ -218,3 +218,69 @@ Nowa baza `kombain` zostaje (nie zawiera nic, co blokowałoby powrót), stara `k
 | Data Model pokazuje 0 kolekcji | tabele są unmanaged — uruchom `deploy/scripts/register-collections.sh` (PATCH meta) |
 | `POST /collections` → `400 already exists` | to normalne dla istniejącej tabeli; użyj PATCH (skrypt robi to za Ciebie) |
 | Seed nie dodał źródeł | źródło już istnieje (`ON CONFLICT (url)`) — poprawne zachowanie |
+
+## 11. Worker: Docker + cron (VPS)
+
+Pliki: `deploy/worker.compose.yml` + `apps/worker/Dockerfile`. Worker wchodzi do sieci `n8n-docker_default` (bez publikowania portów). **Uruchamiaj z roota repo** (`-f deploy/worker.compose.yml`), bo build context to katalog repo, a `env_file` rozwiązuje się względem katalogu compose (`deploy/`).
+
+### 11.1 Kod na VPS (pełne repo, nie tylko deploy)
+
+```bash
+cd <repo>
+tar czf - package.json tsconfig.json .dockerignore packages apps/worker deploy | ssh <USER>@<VPS_IP> 'mkdir -p ~/kombain && tar xzf - -C ~/kombain'
+```
+
+### 11.2 Env (tylko na VPS, `chmod 600`, nigdy w repo)
+
+```bash
+cd ~/kombain
+umask 077
+cat > deploy/worker.env <<'EOF'
+DIRECT_DATABASE_URL=postgresql://kombain_user:<haslo>@n8n-docker-postgres-1:5432/kombain
+GEMINI_API_KEY=<klucz>
+GEMINI_LITE_MODEL=gemini-3.1-flash-lite
+GEMINI_PRO_MODEL=gemini-3.8-flash
+SCRAPINGANT_API_KEY=<klucz>
+MAX_PUBLISHED_PER_RUN=1
+MAX_LINKS_PER_SOURCE=15
+FETCH_CONCURRENCY=5
+R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+R2_BUCKET=articles
+R2_ACCESS_KEY_ID=<klucz>
+R2_SECRET_ACCESS_KEY=<sekret>
+R2_PUBLIC_BASE_URL=https://media.kombain.pl
+EOF
+chmod 600 deploy/worker.env
+```
+
+### 11.3 Pierwszy run (limit 1, ręcznie)
+
+```bash
+cd ~/kombain
+docker compose -f deploy/worker.compose.yml build
+docker compose -f deploy/worker.compose.yml run --rm worker
+```
+
+### 11.4 Cron co 6 h (host, z lockiem przeciw nakładaniu)
+
+```bash
+crontab -e
+```
+
+```cron
+0 */6 * * * cd /home/ubuntu/kombain && flock -n /tmp/kombain-worker.lock docker compose -f deploy/worker.compose.yml run --rm worker >> /home/ubuntu/kombain-worker.log 2>&1
+```
+
+`flock -n` = jeśli poprzedni run trwa, nowy jest pomijany (brak podwójnych publikacji). Podmień `/home/ubuntu` na katalog swojego użytkownika.
+
+### 11.5 Podsumowanie runu
+
+```bash
+grep '"event":"run_summary"' /home/ubuntu/kombain-worker.log | tail -1
+grep '"event":"dropped"' /home/ubuntu/kombain-worker.log | tail -5
+```
+
+Uwagi:
+- `MAX_PUBLISHED_PER_RUN` (max 2) pilnuje kosztów; na pierwszy test `1`.
+- Po limicie run kończy się, a pozostałe linki wrócą w kolejnym runie.
+- Błąd źródła nie wywala runu — trafia do `source_error` w logu.

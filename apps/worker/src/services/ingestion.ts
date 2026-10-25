@@ -29,6 +29,8 @@ export interface IngestionDeps {
   fetchText?: (url: string) => Promise<string>;
   scrapingAntKey?: string;
   scrapingAntEndpoint?: string;
+  /** Limit pozycji na źródło (max 15, AGENTS §2.1). */
+  maxLinks?: number;
 }
 
 export interface IngestionResult {
@@ -79,7 +81,8 @@ export function normalizeUrl(href: string, baseUrl: string): string | null {
 export function extractLinks(
   html: string,
   source: SourceForIngestion,
-  selector: string | null = source.link_selector
+  selector: string | null = source.link_selector,
+  maxLinks: number = MAX_LINKS_PER_SOURCE
 ): RawArticleCandidate[] {
   const $ = cheerio.load(html);
   const query = selector && selector.trim() ? selector.trim() : "a[href]";
@@ -103,7 +106,7 @@ export function extractLinks(
     candidates.push({ sourceId: source.id, originalTitle, sourceUrl });
   });
 
-  return candidates.slice(0, MAX_LINKS_PER_SOURCE);
+  return candidates.slice(0, Math.min(maxLinks, MAX_LINKS_PER_SOURCE));
 }
 
 export function buildScrapingAntUrl(targetUrl: string, apiKey: string, endpoint = SCRAPINGANT_ENDPOINT): string {
@@ -127,13 +130,13 @@ export async function ingestSource(source: SourceForIngestion, deps: IngestionDe
       const xml = await fetchText(source.url);
       const feed = await new Parser().parseString(xml);
       if (!Array.isArray(feed.items)) throw new Error("Nieprawidłowy feed RSS");
-      return { ...base, candidates: collectFeedItems(feed.items, source), error: null };
+      return { ...base, candidates: collectFeedItems(feed.items, source, deps.maxLinks), error: null };
     }
 
     if (!key) return { ...base, candidates: [], error: "Brak SCRAPINGANT_API_KEY dla źródła typu scraper" };
 
     const html = await fetchText(buildScrapingAntUrl(source.url, key, deps.scrapingAntEndpoint));
-    return { ...base, candidates: extractLinks(html, source), error: null };
+    return { ...base, candidates: extractLinks(html, source, source.link_selector, deps.maxLinks), error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { sourceId: source.id, type, candidates: [], error: redactSecret(message, key) };
@@ -147,8 +150,10 @@ function redactSecret(message: string, secret: string): string {
 
 function collectFeedItems(
   items: Array<{ title?: string; link?: string }>,
-  source: SourceForIngestion
+  source: SourceForIngestion,
+  maxLinks: number = MAX_LINKS_PER_SOURCE
 ): RawArticleCandidate[] {
+  const limit = Math.min(maxLinks, MAX_LINKS_PER_SOURCE);
   const seen = new Set<string>();
   const candidates: RawArticleCandidate[] = [];
 
@@ -164,7 +169,7 @@ function collectFeedItems(
 
     seen.add(sourceUrl);
     candidates.push({ sourceId: source.id, originalTitle, sourceUrl });
-    if (candidates.length >= MAX_LINKS_PER_SOURCE) break;
+    if (candidates.length >= limit) break;
   }
 
   return candidates;

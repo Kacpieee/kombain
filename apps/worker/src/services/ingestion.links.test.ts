@@ -132,6 +132,13 @@ describe("ingestSource — RSS", () => {
     ]);
   });
 
+  it("maxLinks z deps ogranicza liczbę pozycji", async () => {
+    const xml = rssXml(Array.from({ length: 10 }, (_, i) => ({ title: `Temat ${i}`, link: `https://example.com/${i}` })));
+
+    const result = await ingestSource(SOURCE, { fetchText: async () => xml, maxLinks: 3 });
+    expect(result.candidates).toHaveLength(3);
+  });
+
   it("limit 15 obowiązuje też dla RSS", async () => {
     const xml = rssXml(Array.from({ length: 20 }, (_, i) => ({ title: `Temat ${i}`, link: `https://example.com/${i}` })));
 
