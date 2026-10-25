@@ -12,6 +12,7 @@ import {
   syncTags,
 } from "./queries.js";
 import { createPool, withTransaction } from "./index.js";
+import { clearFailure, getFailure, recordFailure, shouldSkipFailure } from "./failures.js";
 import { rejectArticle, saveArticle } from "./persist.js";
 import type { Pool } from "pg";
 
@@ -51,7 +52,7 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
   });
 
   beforeEach(async () => {
-    await db.query("TRUNCATE article_tags, articles, tags, sources RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE article_tags, articles, tags, sources, article_failures RESTART IDENTITY CASCADE");
     const { rows } = await db.query<{ id: string }>("SELECT id FROM categories WHERE slug = 'agroenergetyka'");
     categoryId = rows[0]!.id;
   });
@@ -653,5 +654,34 @@ describePg("PG: schema + 8 zapytań (integracja)", () => {
     expect(first.articleId).toBeTruthy();
     expect(second.dropped).toBe(true);
     expect(second.articleId).toBeNull();
+  });
+
+  it("article_failures: record inkrementuje attempts, get zwraca wpis", async () => {
+    await recordFailure(db, { sourceUrl: "https://a.pl/f1", stage: "gate", error: "429" });
+    await recordFailure(db, { sourceUrl: "https://a.pl/f1", stage: "scrape", error: "403" });
+
+    const row = await getFailure(db, "https://a.pl/f1");
+    expect(row).toMatchObject({ attempts: 2, last_stage: "scrape", last_error: "403" });
+    expect(shouldSkipFailure(row)).toBe(false);
+  });
+
+  it("article_failures: 3 próby aktywują backoff, clearFailure czyści", async () => {
+    for (const stage of ["scrape", "gate", "editor"]) {
+      await recordFailure(db, { sourceUrl: "https://a.pl/f2", stage, error: `${stage} error` });
+    }
+
+    const row = await getFailure(db, "https://a.pl/f2");
+    expect(row?.attempts).toBe(3);
+    expect(shouldSkipFailure(row)).toBe(true);
+
+    await clearFailure(db, "https://a.pl/f2");
+    await expect(getFailure(db, "https://a.pl/f2")).resolves.toBeNull();
+  });
+
+  it("article_failures: wpis starszy niż 7 dni nie liczy się do backoffu", async () => {
+    await recordFailure(db, { sourceUrl: "https://a.pl/f3", stage: "gate", error: "x" });
+    await db.query("UPDATE article_failures SET last_seen_at = NOW() - INTERVAL '8 days' WHERE source_url = 'https://a.pl/f3'");
+
+    await expect(getFailure(db, "https://a.pl/f3")).resolves.toBeNull();
   });
 });

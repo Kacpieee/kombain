@@ -14,7 +14,9 @@ const CONFIG: AppConfig = {
   SCRAPINGANT_API_KEY: undefined,
   MAX_PUBLISHED_PER_RUN: 2,
   MAX_LINKS_PER_SOURCE: 15,
+  MAX_PROCESSED_PER_RUN: 10,
   FETCH_CONCURRENCY: 5,
+  RUN_TIMEOUT_MS: 1_500_000,
   R2_ENDPOINT: undefined,
   R2_BUCKET: "articles",
   R2_ACCESS_KEY_ID: undefined,
@@ -315,5 +317,238 @@ describe("runOnce", () => {
 
     expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
     expect(report.dry_run).toBe(1);
+  });
+
+  it("backoff: link po 3 próbach jest pomijany bez pipeline", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/backoff")],
+      error: null,
+    }));
+    const process = vi.fn(async () => published());
+    const events: Array<Record<string, unknown>> = [];
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      getFailure: async () => ({
+        source_url: "https://x/backoff",
+        attempts: 3,
+        last_stage: "gate",
+        last_error: "429",
+        first_seen_at: new Date(),
+        last_seen_at: new Date(),
+      }),
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: (event) => events.push(event),
+    });
+
+    expect(process).not.toHaveBeenCalled();
+    expect(report.dropped_silent).toBe(1);
+    expect(events.some((event) => event.event === "dropped" && event.reason === "failure_backoff")).toBe(true);
+  });
+
+  it("błąd pipeline zapisuje porażkę, sukces czyści", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const recordFailure = vi.fn(async () => {});
+    const clearFailure = vi.fn(async () => {});
+    const infra = {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      getFailure: async () => null,
+      recordFailure,
+      clearFailure,
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: () => {},
+    };
+
+    await runOnce(POOL, CONFIG, {
+      ...infra,
+      process: vi.fn(async (): Promise<ArticleOutcome> => ({ status: "error", stage: "gate", error: "429" })),
+    });
+    expect(recordFailure).toHaveBeenCalledWith(POOL, {
+      sourceUrl: "https://x/1",
+      stage: "gate",
+      error: "429",
+    });
+
+    await runOnce(POOL, CONFIG, { ...infra, process: vi.fn(async () => published()) });
+    expect(clearFailure).toHaveBeenCalledWith(POOL, "https://x/1");
+  });
+
+  it("wysyła jedno podsumowanie i pinguje healthcheck start/success", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const notifySpy = vi.fn(async (_text: string) => true);
+    const hc: string[] = [];
+
+    await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(async () => published()),
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: notifySpy,
+      healthcheck: async (state) => {
+        hc.push(state);
+        return true;
+      },
+      log: () => {},
+    });
+
+    expect(notifySpy).toHaveBeenCalledTimes(1);
+    expect(notifySpy.mock.calls[0]?.[0]).toContain("published: 1");
+    expect(hc).toEqual(["start", "success"]);
+  });
+
+  it("alert trafia do tej samej wiadomości przy 3+ błędach", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [1, 2, 3].map((i) => candidate("s1", `https://x/${i}`)),
+      error: null,
+    }));
+    const notifySpy = vi.fn(async (_text: string) => true);
+
+    await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(async (): Promise<ArticleOutcome> => ({ status: "error", stage: "gate", error: "429" })),
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: notifySpy,
+      healthcheck: async () => true,
+      log: () => {},
+    });
+
+    expect(notifySpy.mock.calls[0]?.[0]).toContain("ALERT");
+  });
+
+  it("dry-run nie woła notify/healthcheck/failure store", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const notifySpy = vi.fn(async (_text: string) => true);
+    const hcSpy = vi.fn(async () => true);
+    const getFailureSpy = vi.fn(async () => null);
+
+    await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(async (): Promise<ArticleOutcome> => ({ status: "dry_run", wouldBe: "published", via: "direct" })),
+      dryRun: true,
+      getFailure: getFailureSpy,
+      notify: notifySpy,
+      healthcheck: hcSpy,
+      log: () => {},
+    });
+
+    expect(notifySpy).not.toHaveBeenCalled();
+    expect(hcSpy).not.toHaveBeenCalled();
+    expect(getFailureSpy).not.toHaveBeenCalled();
+  });
+
+  it("soft timeout zatrzymuje run przed pipeline", async () => {
+    let tick = 0;
+    const base = 1_700_000_000_000;
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const process = vi.fn(async () => published());
+
+    const report = await runOnce(POOL, { ...CONFIG, RUN_TIMEOUT_MS: 60_000 }, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      now: () => new Date(base + tick++ * 120_000),
+      log: () => {},
+    });
+
+    expect(process).not.toHaveBeenCalled();
+    expect(report.errors.join(" ")).toContain("timeout");
+  });
+
+  it("błąd failure-store nie wywala runu (event + licznik błędu)", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const events: Array<Record<string, unknown>> = [];
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(async (): Promise<ArticleOutcome> => ({ status: "error", stage: "gate", error: "429" })),
+      getFailure: async () => null,
+      recordFailure: async () => {
+        throw new Error("permission denied for table article_failures");
+      },
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: (event) => events.push(event),
+    });
+
+    expect(report.errors).toEqual(["gate: 429"]);
+    expect(events.some((event) => event.event === "failure_store_error" && event.op === "record")).toBe(true);
+  });
+
+  it("MAX_PROCESSED_PER_RUN pochodzi z configu (bez deps.maxProcessed)", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1"), candidate("s1", "https://x/2")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (): Promise<ArticleOutcome> => ({ status: "draft", articleId: "d", slug: "s", via: "direct" })
+    );
+    const events: Array<Record<string, unknown>> = [];
+
+    const report = await runOnce(POOL, { ...CONFIG, MAX_PROCESSED_PER_RUN: 1 }, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: (event) => events.push(event),
+    });
+
+    expect(process).toHaveBeenCalledTimes(1);
+    expect(report.processed).toBe(1);
+    expect(events.some((event) => event.event === "run_processed_limit")).toBe(true);
   });
 });

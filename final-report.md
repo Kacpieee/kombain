@@ -1,49 +1,54 @@
-# Final report — F2-T7a (CLI workera: dry-run, prompt preview, check-env)
+# Final report — F2-T7b (alerty, timeout, backoff)
 
 ## Status
-Done (Mode: CRITICAL — dotyka pipeline'u, choć bez DDL)
+Done (Mode: CRITICAL — DDL + sekrety + logika runu)
 
 ## Summary
-Powstało CLI do bezpiecznego testowania workera: `run --dry-run` przechodzi scrape → Bramkarz → Redaktor → review **bez** media i bez zapisu do DB, `--url` testuje pojedynczy link bez ingestion, `preview-prompt` drukuje finalne prompty z tych samych builderów co produkcja, a `check-env` pokazuje wyłącznie maskowany stan konfiguracji.
+Worker przestał być „niewidoczny”: po każdym runie wysyła jedno podsumowanie na Telegram (z alertem przy `errors>=3` lub awarii wszystkich źródeł), pinguje healthchecks (start/success/fail), ma twardy timeout w cronie, limit przetworzonych linków i soft deadline, a linki, które padły 3 razy, są pomijane przez 7 dni.
 
 ## Changes
-- `apps/worker/src/cli.ts` — `parseArgs`, `buildRunOptions`, `renderPreview`, `maskEnv`, `runCli`; komendy `run|preview-prompt|check-env|help`; DI `runOnce`/`createPool` w testach
-- `apps/worker/src/pipeline.ts` — `persist: false` (dry-run): nowy wynik `dry_run { wouldBe, article?, review?, reason? }`; zero `saveArticle`/`rejectArticle`/media w każdej ścieżce
-- `apps/worker/src/orchestrator.ts` — `dryRun`, `url` (pojedynczy link, bez źródeł), `sourceId` (filtr), `maxLinks`, `maxProcessed`; liczniki `processed`/`dry_run`; log `dry_run`/`run_processed_limit`
-- `apps/worker/src/services/ingestion.ts` — `RawArticleCandidate.sourceId: string | null` (tryb `--url`)
-- `apps/worker/src/cli.test.ts` (18), `pipeline.test.ts` (+6 dry-run), `orchestrator.test.ts` (+5)
-- `scripts/worker-run.sh`, `deploy/README.md` §12
-- `docs/plans.md` (T7b + F3-T1 w TERAZ), `docs/STATUS.md`
-- Branch: `main`
+- `packages/db/schema.sql` + `deploy/sql/migrate-article-failures.sql` — tabela `article_failures` (+ indeks)
+- `packages/db/failures.ts` — `getFailure`, `recordFailure` (`attempts+1`), `clearFailure`, `shouldSkipFailure` (3 próby / 7 dni); eksport `@kombain/db/failures`
+- `apps/worker/src/services/notify.ts` — Telegram (redakcja sekretów, rate-limit 1/min, no-op bez env), `formatRunSummary`, `shouldAlert`, `pingHealthcheck`
+- `apps/worker/src/orchestrator.ts` — healthcheck start/success **wstrzykiwane** (bez ukrytego I/O), backoff przed pipeline, zapis/czyszczenie porażek, `MAX_PROCESSED_PER_RUN`, soft deadline `RUN_TIMEOUT_MS`, jedno podsumowanie/alert na run (timeout też podnosi ALERT); błędy failure-store nie wywalają runu
+- `apps/worker/src/index.ts` — `handleFatal` (log + Telegram + `/fail`), wpięte realne `notify`/`healthcheck`
+- `apps/worker/src/cli.ts` — realne alerty tylko poza dry-run
+- `apps/worker/src/config.ts` — `MAX_PROCESSED_PER_RUN`, `RUN_TIMEOUT_MS`, `TELEGRAM_*`, `HEALTHCHECKS_PING_URL`
+- `deploy/scripts/worker-cron.sh` — `timeout 1800` + alert/ping przy 124; README §11.4 i §13 (Telegram, healthchecks, backoff, migracja jako `kombain_user`)
+- `deploy/sql/migrate-article-failures.sql` — `OWNER TO kombain_user` (spójność z rolą workera)
+- Testy: `notify.test.ts` (11), `index.test.ts` (1, `handleFatal`), orchestrator +9 (backoff, record/clear, failure-store exception, notify/hc, alert, dry-run cisza, timeout, `MAX_PROCESSED` z configu), PG +3
+- `docs/plans.md` (T7b usunięty, TERAZ → F3-T1), `docs/STATUS.md`, `.env.example`
 
 ## Verification (liczbowo, po ostatniej poprawce)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **191 passed, 0 failed, 30 skipped** (m.in. CLI 18, pipeline 18, orchestrator 14)
-- PG-docker: **30 passed** (bez zmian)
-- Zero sieci w testach CLI (żadnych wołań Gemini/Telegram)
+- vitest: **211 passed, 0 failed, 33 skipped**
+- PG-docker (podman, `postgres:16`): **33 passed** (w tym 3 failures/backoff)
+- Zero sieci: notify/healthcheck testowane przez wstrzykiwane `send`/`fetchImpl`; orkiestrator domyślnie **nie** woła I/O, realne alerty wpinają tylko `index.ts`/`cli.ts` (poza dry-run)
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 2 blokery (brak testu dry-run dla `gate rejected`; brak testu mapowania flag CLI → `runOnce`, więc mutacja `dryRun:false` przechodziła)
-  - Runda 2: **Approve** — 0 blokerów; mutacje potwierdziły KILLED dla obu blokerów R1 (gate-rejected guard, mapowanie flag CLI, `pool.end()`)
+  - Runda 1: Request changes — 4 blokery (migracja jako `n8n` → brak DML dla `kombain_user`; brak testu wyjątku failure-store; brak testu `MAX_PROCESSED_PER_RUN` z configu; brak testu `worker_fatal`)
+  - Runda 2: **Approve** — 0 blokerów; mutacje M1–M3b potwierdziły KILLED dla wszystkich poprawek z R1
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- `--dry-run` nadal płaci za Gemini (scrape + gate + editor + review); `--url` + `--limit 1` to najtańszy sensowny test.
-- Dry-run czyta DB (dedupe, historia 30 dni) — wymaga poprawnego `DIRECT_DATABASE_URL`; nie zapisuje nic. URL już obecny w DB zwróci `dropped/url_duplicate`.
-- `--url` bez `--dry-run` wykonuje normalny zapis z `source_id = NULL`; CLI wypisuje ostrzeżenie.
-- `check-env` pokazuje długość sekretów i host/bazę (bez hasła) — metadane w logach/screenach.
-- CLI działa w obrazie przez `bun src/cli.ts`; lokalnie bez Bun trzeba użyć compose/podmana (nie dodano `tsx`).
-- `maxProcessed` jest dziś przekazywane tylko przez CLI w dry-run; stały limit produkcyjny wchodzi w F2-T7b.
-- `verify.sh` ma false-positive na literały typu `GEMINI_API_KEY=…` w testach — zapis testu omija wzorzec; guard do poprawy w OPT.
-- `--json` + `--url` bez `--dry-run` wypisuje ostrzeżenie na stdout, więc pierwsza linia nie jest JSONL (do przeniesienia na stderr).
-- `failure_backoff` w unii `dropped` jest placeholderem pod F2-T7b.
+- Telegram i healthchecks są best-effort — błąd wysyłki jest połykany (alert nie wywala runu, ale może zginąć).
+- Rate-limit 1 wiadomość/min: podsumowanie i natychmiastowy `worker_fatal` w tej samej minucie → drugi alert może zostać pominięty.
+- `healthcheck success` leci także przy błędach artykułów i po soft timeoucie (alert tylko w treści Telegrama); `/fail` pochodzi z fatala lub wrappera przy 124.
+- Twardy timeout w cronie zabija `docker compose run`; kontener potomny może w skrajnym przypadku przeżyć — do potwierdzenia na VPS.
+- Backoff kluczuje po `source_url`; po wygaśnięciu okna link dostaje jedną próbę (kolejny błąd znów daje 7 dni przerwy), a `attempts` nie resetuje się.
+- Wygasłe wpisy `article_failures` nie są usuwane — rosną; czyszczenie w OPT.
+- `RUN_TIMEOUT_MS` sprawdzany między artykułami; pojedyncze zawieszone LLM wymaga twardego timeoutu crona.
+- Błędy failure-store trafiają tylko do JSONL (`failure_store_error`), nie do licznika `errors`/Telegramu.
+- Wpięcie realnych `notify`/`healthcheck` w `index.ts`/`cli.ts` nie ma testu (mutacja przechodzi) — do domknięcia w OPT.
+- Migracja `article_failures` nie jest wykonywana w testach PG (testy aplikują `schema.sql`); plik migracji może się rozjechać.
+- `verify.sh` nie uruchamia testów PG (brak `TEST_DATABASE_URL`), więc `exit 0` nie obejmuje integracji — PG potwierdzane osobno (`scripts/db-test.sh`).
 
 ## Out of scope (celowo nietknięte)
-- Telegram/healthchecks, timeout, `article_failures` (F2-T7b), GUI, Astro.
+- GUI, Grafana/Prometheus, alerty per `source_error`, F3.
 
 ## Next steps
-- F2-T7b: alerty Telegram + healthchecks, timeout runu, `MAX_PROCESSED_PER_RUN`, tabela `article_failures`.
+- F3-T1: Astro Hybrid + `directus.ts` + `/`, `/kategoria/[slug]`, `/artykul/[slug]` + cache headers.

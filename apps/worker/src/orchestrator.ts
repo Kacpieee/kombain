@@ -1,11 +1,13 @@
 import type { Pool } from "pg";
 import pLimit from "p-limit";
 import { fetchActiveSources } from "@kombain/db";
+import { clearFailure, getFailure, recordFailure, shouldSkipFailure } from "@kombain/db";
 import type { AppConfig } from "./config.js";
 import { processArticle } from "./pipeline.js";
 import type { ArticleOutcome } from "./pipeline.js";
 import { ingestSource } from "./services/ingestion.js";
 import type { RawArticleCandidate, SourceForIngestion } from "./services/ingestion.js";
+import { formatRunSummary, shouldAlert } from "./services/notify.js";
 
 export interface RunReport {
   started_at: string;
@@ -40,6 +42,12 @@ export interface OrchestratorDeps {
   maxLinks?: number;
   /** Twardy limit przetworzonych linków w runie (ochrona kosztów). */
   maxProcessed?: number;
+  /** Wstrzykiwane w testach. */
+  notify?: (text: string) => Promise<unknown>;
+  healthcheck?: (state: "start" | "success" | "fail") => Promise<unknown>;
+  getFailure?: typeof getFailure;
+  recordFailure?: typeof recordFailure;
+  clearFailure?: typeof clearFailure;
 }
 
 /**
@@ -54,6 +62,7 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
   const process = deps.process ?? processArticle;
 
   const startedAt = now().toISOString();
+  const startedMs = now().getTime();
   const report: RunReport = {
     started_at: startedAt,
     finished_at: startedAt,
@@ -70,6 +79,10 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     image_fallback_used: 0,
     source_errors: 0,
   };
+
+  if (!deps.dryRun && deps.healthcheck) {
+    await deps.healthcheck("start");
+  }
 
   if (deps.url) {
     const candidates = [{ sourceId: null, originalTitle: deps.url, sourceUrl: deps.url }];
@@ -135,6 +148,9 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     emit: (event: Record<string, unknown>) => void
   ): Promise<RunReport> {
     return (async () => {
+      const maxProcessed = options.maxProcessed ?? cfg.MAX_PROCESSED_PER_RUN;
+      const isDry = options.dryRun === true;
+
       for (let index = 0; index < list.length; index++) {
         const candidate = list[index]!;
 
@@ -142,9 +158,33 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
           emit({ event: "run_limit_reached", published: out.published, remaining: list.length - index });
           break;
         }
-        if (options.maxProcessed !== undefined && out.processed >= options.maxProcessed) {
+        if (out.processed >= maxProcessed) {
           emit({ event: "run_processed_limit", processed: out.processed, remaining: list.length - index });
           break;
+        }
+        if (!isDry && now().getTime() - startedMs > cfg.RUN_TIMEOUT_MS) {
+          out.errors.push(`timeout: soft deadline ${cfg.RUN_TIMEOUT_MS}ms`);
+          emit({ event: "run_timeout_soft", elapsedMs: now().getTime() - startedMs });
+          break;
+        }
+
+        if (!isDry) {
+          let failure = null;
+          try {
+            failure = await (options.getFailure ?? getFailure)(db, candidate.sourceUrl);
+          } catch (error) {
+            emit({ event: "failure_store_error", op: "get", error: error instanceof Error ? error.message : String(error) });
+          }
+          if (shouldSkipFailure(failure)) {
+            out.dropped_silent += 1;
+            emit({
+              event: "dropped",
+              reason: "failure_backoff",
+              sourceUrl: candidate.sourceUrl,
+              attempts: failure!.attempts,
+            });
+            continue;
+          }
         }
 
         let outcome: ArticleOutcome;
@@ -160,6 +200,27 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
 
         out.processed += 1;
         countOutcome(out, outcome);
+
+        if (!isDry) {
+          try {
+            if (outcome.status === "error") {
+              await (options.recordFailure ?? recordFailure)(db, {
+                sourceUrl: candidate.sourceUrl,
+                stage: outcome.stage,
+                error: outcome.error,
+              });
+            } else {
+              await (options.clearFailure ?? clearFailure)(db, candidate.sourceUrl);
+            }
+          } catch (error) {
+            emit({
+              event: "failure_store_error",
+              op: outcome.status === "error" ? "record" : "clear",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
         if (outcome.status === "dry_run") {
           emit({ event: "dry_run", wouldBe: outcome.wouldBe, sourceUrl: candidate.sourceUrl, reason: outcome.reason });
         } else if (outcome.status === "dropped") {
@@ -169,8 +230,17 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
         }
       }
 
-      out.finished_at = (options.now ?? (() => new Date()))().toISOString();
+      const finished = now();
+      out.finished_at = finished.toISOString();
       emit({ event: "run_summary", ...out });
+
+      if (!isDry) {
+        const summary = formatRunSummary(out, finished.getTime() - startedMs);
+        const needsAlert = shouldAlert(out) || out.errors.some((error) => error.startsWith("timeout:"));
+        if (options.notify) await options.notify(needsAlert ? `⚠️ ALERT\n${summary}` : summary);
+        if (options.healthcheck) await options.healthcheck("success");
+      }
+
       return out;
     })();
   }

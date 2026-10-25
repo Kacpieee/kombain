@@ -13,9 +13,10 @@
 
 - F2-T7a: CLI workera — `run --dry-run` (bez media/save/reject, `wouldBe`), `--url` (pojedynczy link), `--limit/--max-links/--source-id`, `preview-prompt` (gate/editor/r1/r2/r3 z tych samych builderów), `check-env` (maskowane); `scripts/worker-run.sh`; 18 testów CLI
 
+- F2-T7b: obserwowalność — Telegram (jedno podsumowanie/run + ALERT przy `errors>=3`/wszystkich źródłach/soft timeout), healthchecks start/success/fail, `worker_fatal` z alertem, twardy timeout 30 min w cronie, `MAX_PROCESSED_PER_RUN` + soft deadline, `article_failures` (backoff 3 próby/7 dni) + migracja; 211 unit + 33 PG
+
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
-- F2-T7b obserwowalność (Telegram + healthchecks + timeout + `article_failures`)
-- F3-T1 Astro
+- F3-T1 Astro Hybrid + strony

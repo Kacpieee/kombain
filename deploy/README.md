@@ -243,7 +243,12 @@ GEMINI_PRO_MODEL=gemini-3.8-flash
 SCRAPINGANT_API_KEY=<klucz>
 MAX_PUBLISHED_PER_RUN=1
 MAX_LINKS_PER_SOURCE=15
+MAX_PROCESSED_PER_RUN=10
 FETCH_CONCURRENCY=5
+RUN_TIMEOUT_MS=1500000
+TELEGRAM_BOT_TOKEN=<token>
+TELEGRAM_CHAT_ID=<chat_id>
+HEALTHCHECKS_PING_URL=<url>
 R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com
 R2_BUCKET=articles
 R2_ACCESS_KEY_ID=<klucz>
@@ -268,10 +273,10 @@ crontab -e
 ```
 
 ```cron
-0 */6 * * * cd /home/ubuntu/kombain && flock -n /tmp/kombain-worker.lock docker compose -f deploy/worker.compose.yml run --rm worker >> /home/ubuntu/kombain-worker.log 2>&1
+0 */6 * * * flock -n /tmp/kombain-worker.lock /home/ubuntu/kombain/deploy/scripts/worker-cron.sh >> /home/ubuntu/kombain-worker.log 2>&1
 ```
 
-`flock -n` = jeśli poprzedni run trwa, nowy jest pomijany (brak podwójnych publikacji). Podmień `/home/ubuntu` na katalog swojego użytkownika.
+`flock -n` = jeśli poprzedni run trwa, nowy jest pomijany. Wrapper `worker-cron.sh` dokłada `timeout 1800` i przy przekroczeniu wysyła Telegram + ping `/fail` do healthchecks. Podmień `/home/ubuntu` na katalog swojego użytkownika.
 
 ### 11.5 Podsumowanie runu
 
@@ -311,3 +316,42 @@ Semantyka:
 - `--json` — JSONL zamiast linii ludzkich.
 - `preview-prompt --kind gate|editor|r1|r2|r3` — te same buildery co produkcja; nic nie jest wysyłane do Gemini.
 - `check-env` — tylko `set(len=…)`/`not set`, host DB bez hasła.
+
+## 13. Alerty i dead man's switch
+
+Worker wysyła **jedno podsumowanie na run** (Telegram) oraz alert w tej samej wiadomości, gdy: `errors >= 3` albo padły wszystkie źródła. `worker_fatal` i timeout (124) idą osobnym alertem.
+
+### 13.1 Telegram
+
+1. W Telegramie: `@BotFather` → `/newbot` → nazwa → dostajesz token.
+2. Napisz coś do bota, potem:
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["result"][-1]["message"]["chat"]["id"])'
+```
+
+3. Do `deploy/worker.env`: `TELEGRAM_BOT_TOKEN=...` i `TELEGRAM_CHAT_ID=...`.
+4. Test: `scripts/worker-run.sh run --dry-run --limit 1` **nie wysyła** alertów (dry-run jest cichy). Test kanału robisz realnym runem albo tymczasowo przez `run --limit 1`.
+
+### 13.2 healthchecks.io (brak runu = alert)
+
+1. `https://healthchecks.io` → **Add Check**: period 1 h, grace 12 h.
+2. Skopiuj ping URL do `HEALTHCHECKS_PING_URL`.
+3. Worker pinguje `/start` na początku, base URL po sukcesie, `/fail` przy fatal/timeoucie.
+4. Brak pingów przez 12 h → healthchecks wyśle mail/Telegram „worker nie działa”.
+
+### 13.3 Pamięć porażek (backoff)
+
+Tabela `article_failures`: link, który rzucił błąd, dostaje `attempts+1`; po **3 próbach** jest pomijany przez **7 dni** (bez scrape i bez LLM), a po wygaśnięciu okna dostaje jedną próbę (kolejny błąd znów uruchamia 7-dniową przerwę). Sukces (published/draft/rejected) czyści wpis. To zatrzymuje cichy retry-loop i koszty.
+
+Migracja istniejącej bazy (jako `kombain_user` — worker ma DML na tej roli):
+
+```bash
+docker exec -i n8n-docker-postgres-1 psql -U kombain_user -d kombain -v ON_ERROR_STOP=1 < deploy/sql/migrate-article-failures.sql
+```
+
+Podgląd:
+
+```bash
+docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "SELECT source_url, attempts, last_stage, last_seen_at FROM article_failures ORDER BY last_seen_at DESC LIMIT 10;"
+```

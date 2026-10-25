@@ -5,6 +5,7 @@ import { CATEGORIES, buildEditorPrompt, buildGatekeeperPrompt, buildR1Prompt, bu
 import type { Category, EditorOut } from "./prompts.js";
 import { loadConfig } from "./config.js";
 import { runOnce } from "./orchestrator.js";
+import { notify, pingHealthcheck } from "./services/notify.js";
 
 type PreviewKind = "gate" | "editor" | "r1" | "r2" | "r3";
 
@@ -236,6 +237,7 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<number
     const report = await run(pool, runConfig, {
       ...options,
       log: args.json ? undefined : humanLog,
+      ...(args.dryRun ? {} : { notify: (text: string) => notify(text), healthcheck: (state: "start" | "success" | "fail") => pingHealthcheck(state) }),
     });
 
     if (args.dryRun) {

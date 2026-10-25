@@ -23,7 +23,7 @@ export type ArticleOutcome =
     }
   | { status: "draft"; articleId: string; slug: string; via: "direct" | "scrapingant" | null; imageVia?: "r2" | "default" }
   | { status: "rejected"; articleId: string | null; via: "direct" | "scrapingant" | null }
-  | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" | "failure_backoff" }
+  | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" }
   | { status: "error"; stage: "scrape" | "gate" | "editor" | "review" | "persist" | "pipeline"; error: string }
   | {
       status: "dry_run";

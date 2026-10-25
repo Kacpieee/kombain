@@ -6,7 +6,8 @@
     ".": "./index.ts",
     "./slug": "./slug.ts",
     "./queries": "./queries.ts",
-    "./persist": "./persist.ts"
+    "./persist": "./persist.ts",
+    "./failures": "./failures.ts"
   },
   "dependencies": { "pg": "^8.12.0" },
   "devDependencies": { "typescript": "^5.5.0" }

@@ -75,3 +75,15 @@ CREATE TABLE article_tags (
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
     UNIQUE (article_id, tag_id)
 );
+
+-- 6. Pamięć porażek linków (backoff: 3 próby / 7 dni) — chroni przed pętlą retry i kosztami LLM
+CREATE TABLE IF NOT EXISTS article_failures (
+    source_url TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 1,
+    last_stage VARCHAR(50),
+    last_error TEXT,
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_failures_last_seen ON article_failures(last_seen_at DESC);

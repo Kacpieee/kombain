@@ -9,6 +9,8 @@ describe("loadConfig", () => {
 
     expect(config.MAX_PUBLISHED_PER_RUN).toBe(2);
     expect(config.MAX_LINKS_PER_SOURCE).toBe(15);
+    expect(config.MAX_PROCESSED_PER_RUN).toBe(10);
+    expect(config.RUN_TIMEOUT_MS).toBe(1_500_000);
     expect(config.FETCH_CONCURRENCY).toBe(5);
     expect(config.GEMINI_LITE_MODEL).toBe("gemini-3.1-flash-lite");
     expect(config.GEMINI_PRO_MODEL).toBe("gemini-3.8-flash");
