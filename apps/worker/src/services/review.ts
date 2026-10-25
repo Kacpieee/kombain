@@ -7,7 +7,7 @@ import {
 } from "../prompts.js";
 import type { EditorOut, R1Decision, R2Atom, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
-import type { FactcheckOutcome } from "./factcheck.js";
+import type { FactcheckOutcome, VerifyStats } from "./factcheck.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
 import type { GenerateFn } from "./llm.js";
 import { parseSynthesisJson } from "./ingestion.js";
@@ -62,6 +62,7 @@ export interface ReviewOutcome {
   cleanedHtml: string;
   removedInferences: string[];
   external: ExternalVerdict[];
+  verify?: VerifyStats;
   article: EditorOut;
 }
 
@@ -411,6 +412,7 @@ export async function reviewArticle(
     (atom) => !coveredByResearch(atom.text, deps.researchBrief ?? [])
   );
   let external: ExternalVerdict[] = [];
+  let verifyStats: VerifyStats | undefined;
 
   if (externalAtoms.length > 0) {
     const factcheck = await verify(externalAtoms);
@@ -419,12 +421,14 @@ export async function reviewArticle(
     }
 
     external = reconcileVerdicts(externalAtoms, factcheck.result.results);
+    verifyStats = factcheck.stats;
 
     const refuted = external.filter((item) => item.verdict === "refuted");
     if (refuted.length > 0) {
       return draft("R3", refuted.map((item) => `refuted: ${item.claim}`), article, cleanedHtml, {
         removedInferences,
         external,
+        verify: verifyStats,
       });
     }
 
@@ -433,6 +437,7 @@ export async function reviewArticle(
       return draft("R3", uncertain.map((item) => `uncertain: ${item.claim}`), article, cleanedHtml, {
         removedInferences,
         external,
+        verify: verifyStats,
         needsHumanCheck: true,
       });
     }
@@ -446,6 +451,7 @@ export async function reviewArticle(
     cleanedHtml,
     removedInferences,
     external,
+    verify: verifyStats,
     article,
   };
 }
@@ -527,7 +533,7 @@ function draft(
   issues: string[],
   article: EditorOut,
   cleanedHtml: string,
-  extra: Partial<Pick<ReviewOutcome, "needsHumanCheck" | "removedInferences" | "external">> = {}
+  extra: Partial<Pick<ReviewOutcome, "needsHumanCheck" | "removedInferences" | "external" | "verify">> = {}
 ): ReviewOutcome {
   return {
     status: "draft",
@@ -537,6 +543,7 @@ function draft(
     cleanedHtml,
     removedInferences: extra.removedInferences ?? [],
     external: extra.external ?? [],
+    verify: extra.verify,
     article,
   };
 }

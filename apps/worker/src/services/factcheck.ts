@@ -46,6 +46,15 @@ const JUDGE_RESPONSE_SCHEMA = {
 
 export type VerifyProvider = "deepseek" | "gemini";
 
+export interface VerifyStats {
+  searches: number;
+  serp: number;
+  fetches: number;
+  confirmed: number;
+  refuted: number;
+  uncertain: number;
+}
+
 export interface FactcheckDeps {
   generate: GenerateFn;
   /** Model ścieżki gemini (grounding); domyślnie GEMINI_PRO_MODEL. */
@@ -60,77 +69,236 @@ export interface FactcheckDeps {
   maxAtoms?: number;
 }
 
-export type FactcheckOutcome = { status: "ok"; result: R3Result } | { status: "error"; error: string };
+export type FactcheckOutcome =
+  | { status: "ok"; result: R3Result; stats?: VerifyStats }
+  | { status: "error"; error: string };
 
 const DEFAULT_MAX_ATOMS = 8;
+const MAX_QUERY_LENGTH = 128;
+const STOPWORDS = new Set([
+  "oraz", "przez", "które", "który", "która", "dla", "jest", "jako", "nie", "się", "ale", "także", "ponadto",
+  "that", "with", "from", "this", "have", "were", "will", "their", "about", "into", "more", "than",
+]);
 
 /** R3: weryfikacja atomów `external`. DeepSeek Search+Fetch+Flash-Lite (domyślnie) albo Gemini grounding. */
 export async function verifyExternalAtoms(atoms: R2Atom[], deps: FactcheckDeps): Promise<FactcheckOutcome> {
-  if (atoms.length === 0) return { status: "ok", result: { results: [] } };
+  if (atoms.length === 0) return { status: "ok", result: { results: [] }, stats: emptyStats() };
 
   const provider = deps.provider ?? (process.env.VERIFY_PROVIDER as VerifyProvider | undefined) ?? "deepseek";
   if (provider === "gemini") return verifyWithGemini(atoms, deps);
   return verifyWithSearch(atoms, deps);
 }
 
+/** Zapytanie do wyszukiwania: encje/liczby/lata/nazwy własne + słowa kluczowe, cięte na granicy słowa. */
+export function buildClaimQuery(claim: string): string {
+  const entities = extractClaimEntities(claim);
+  const quoted = entities.quoted[0];
+  const quotedLower = quoted ? quoted.toLowerCase() : "";
+  const words = claim
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}%]/gu, ""))
+    .filter((word) => word.length > 4 && !STOPWORDS.has(word.toLowerCase()) && !quotedLower.includes(word.toLowerCase()));
+
+  const parts = [...(quoted ? [`"${quoted}"`] : []), ...entities.numeric, ...entities.proper, ...words];
+  const seen = new Set<string>();
+  let query = "";
+
+  for (const part of parts) {
+    const key = part.toLowerCase();
+    if (!part || seen.has(key)) continue;
+    const candidate = query ? `${query} ${part}` : part;
+    if (candidate.length > MAX_QUERY_LENGTH) continue;
+    seen.add(key);
+    query = candidate;
+  }
+
+  if (!query) query = claim.replace(/\s+/g, " ").slice(0, MAX_QUERY_LENGTH).trim();
+  return query;
+}
+
+/** Dowód pasuje, gdy zawiera liczbę/rok/cytat z claimu, akronim lub ≥2 nazwy własne albo ≥2 wspólne rdzenie słów. */
+export function isRelevantEvidence(claim: string, evidence: EvidenceItem): boolean {
+  const text = `${evidence.title} ${evidence.summary}`.toLowerCase();
+  const entities = extractClaimEntities(claim);
+
+  if (entities.quoted.some((quoted) => text.includes(quoted.toLowerCase()))) return true;
+  if (entities.numeric.some((numeric) => text.includes(numeric.toLowerCase()))) return true;
+
+  const properHits = entities.proper.filter((proper) => text.includes(proper.toLowerCase()));
+  if (properHits.length >= 2) return true;
+  if (properHits.some(isAcronym)) return true;
+
+  const claimStems = new Set(significantWords(claim).map(stem));
+  const evidenceStems = new Set(significantWords(`${evidence.title} ${evidence.summary}`).map(stem));
+  let shared = 0;
+  for (const word of claimStems) if (evidenceStems.has(word)) shared += 1;
+  return shared >= 2;
+}
+
+/** Akronim/organizacja (NOAA, USDA, EDA, NIFA) — pojedyncza nazwa wystarcza za trafność. */
+function isAcronym(value: string): boolean {
+  const letters = value.replace(/[^\p{L}]/gu, "");
+  return letters.length >= 2 && letters.length <= 6 && letters === letters.toUpperCase();
+}
+
 async function verifyWithSearch(atoms: R2Atom[], deps: FactcheckDeps): Promise<FactcheckOutcome> {
-  const maxAtoms = deps.maxAtoms ?? DEFAULT_MAX_ATOMS;
+  const maxAtoms = deps.maxAtoms ?? parseMaxAtoms(process.env.VERIFY_MAX_ATOMS);
   const model = deps.judgeModel ?? process.env.GEMINI_LITE_MODEL ?? "gemini-3.1-flash-lite";
   const search = deps.search ?? ((query: string) => deepseekSearch(query));
   const serp = deps.serp ?? ((query: string) => serpSearch(query));
   const fetchPage = deps.fetchPage ?? ((url: string) => deepseekFetch(url));
 
   const results: R3Result["results"] = [];
+  const stats = emptyStats();
 
   for (const [index, atom] of atoms.entries()) {
     if (index >= maxAtoms) {
+      stats.uncertain += 1;
       results.push({ claim: atom.text, verdict: "uncertain", evidence_url: "" });
       continue;
     }
 
-    let found: SearchResult[];
+    const query = buildClaimQuery(atom.text);
+
+    let raw: EvidenceItem[] = [];
     try {
-      found = await search(atom.text.slice(0, 128));
+      stats.searches += 1;
+      raw = pickEvidence(await search(query));
     } catch {
-      try {
-        found = await serp(atom.text.slice(0, 128));
-      } catch (fallbackError) {
-        return { status: "error", error: `verify: ${message(fallbackError)}` };
-      }
+      // DeepSeek padł — spróbujemy SERP niżej.
     }
 
-    const evidence = pickEvidence(found);
+    if (raw.length > 0) await fillEvidence(atom.text, raw, fetchPage, stats);
 
-    if (evidence.length === 0) {
+    if (raw.length > 0 && raw[0]!.summary.trim().length === 0) {
+      // Dowód bez treści nie może potwierdzić faktu.
+      stats.uncertain += 1;
       results.push({ claim: atom.text, verdict: "uncertain", evidence_url: "" });
       continue;
     }
 
-    if (evidence.every((item) => item.summary.trim().length === 0)) {
+    let relevant = raw
+      .filter((evidence) => evidence.summary.trim().length > 0)
+      .filter((evidence) => isRelevantEvidence(atom.text, evidence));
+
+    if (relevant.length === 0) {
       try {
-        const content = await fetchPage(evidence[0]!.url);
-        evidence[0] = { ...evidence[0]!, summary: content.slice(0, 1200) };
-      } catch {
-        // Nie udało się pobrać treści — bez dowodu nie ma jak potwierdzić faktu.
-        results.push({ claim: atom.text, verdict: "uncertain", evidence_url: "" });
-        continue;
+        stats.serp += 1;
+        const serpRaw = pickEvidence(await serp(query));
+        if (serpRaw.length > 0) await fillEvidence(atom.text, serpRaw, fetchPage, stats);
+        relevant = serpRaw
+          .filter((evidence) => evidence.summary.trim().length > 0)
+          .filter((evidence) => isRelevantEvidence(atom.text, evidence));
+      } catch (error) {
+        return { status: "error", error: `verify: ${message(error)}` };
       }
     }
 
+    if (relevant.length === 0) {
+      stats.uncertain += 1;
+      results.push({ claim: atom.text, verdict: "uncertain", evidence_url: "" });
+      continue;
+    }
+
     try {
-      const raw = await deps.generate({
+      const judge = await deps.generate({
         model,
-        prompt: buildJudgePrompt([atom.text], evidence),
+        prompt: buildJudgePrompt([atom.text], relevant),
         responseSchema: JUDGE_RESPONSE_SCHEMA,
       });
-      const judged = JudgeSchema.parse(parseSynthesisJson(raw)).results[0];
-      results.push(reconcile(atom.text, judged, evidence));
+      const judged = JudgeSchema.parse(parseSynthesisJson(judge)).results[0];
+      const verdict = reconcile(atom.text, judged, relevant);
+      if (verdict.verdict === "confirmed") stats.confirmed += 1;
+      else if (verdict.verdict === "refuted") stats.refuted += 1;
+      else stats.uncertain += 1;
+      results.push(verdict);
     } catch (error) {
       return { status: "error", error: formatLlmError(error, "R3") };
     }
   }
 
-  return { status: "ok", result: { results } };
+  return { status: "ok", result: { results }, stats };
+}
+
+async function fillEvidence(
+  claim: string,
+  evidence: EvidenceItem[],
+  fetchPage: (url: string) => Promise<string>,
+  stats: VerifyStats
+): Promise<void> {
+  if (evidence.length === 0 || !needsFetch(claim, evidence)) return;
+  try {
+    const content = await fetchPage(evidence[0]!.url);
+    stats.fetches += 1;
+    evidence[0] = { ...evidence[0]!, summary: content.slice(0, 1200) };
+  } catch {
+    // brak treści — zostają summary
+  }
+}
+
+function needsFetch(claim: string, evidence: EvidenceItem[]): boolean {
+  if (evidence.every((item) => item.summary.trim().length === 0)) return true;
+  const digits = extractClaimEntities(claim).numeric;
+  if (digits.length === 0) return false;
+  const top = `${evidence[0]!.title} ${evidence[0]!.summary}`.toLowerCase();
+  return !digits.some((digit) => top.includes(digit.toLowerCase()));
+}
+
+interface ClaimEntities {
+  quoted: string[];
+  numeric: string[];
+  proper: string[];
+}
+
+function extractClaimEntities(claim: string): ClaimEntities {
+  const quoted = [...claim.matchAll(/[„"]([^”"]{3,80})[”"]/g)].map((match) => match[1] ?? "").filter(Boolean);
+  const quotedLower = quoted.map((item) => item.toLowerCase());
+
+  const numeric = (claim.match(/\b(?:19|20)\d{2}\b|\b\d+(?:[.,]\d+)?\s?(?:%|mln|mld|USD|EUR|ha|tys\.?)?/gi) ?? [])
+    .filter((value) => !quotedLower.some((item) => item.includes(value.toLowerCase())));
+
+  const proper: string[] = [];
+  for (const match of claim.matchAll(/\b[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/gu)) {
+    const value = match[0];
+    const before = claim.slice(0, match.index ?? 0);
+    if ((match.index ?? 0) === 0 || /[.!?]\s*$|\n\s*$/.test(before)) continue;
+    const lower = value.toLowerCase();
+    if (quotedLower.some((item) => item.includes(lower))) continue;
+    proper.push(value);
+  }
+
+  return {
+    quoted,
+    numeric: uniqueValues(numeric),
+    proper: uniqueValues(proper),
+  };
+}
+
+function uniqueValues(values: string[]): string[] {
+  const map = new Map<string, string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed) map.set(trimmed.toLowerCase(), trimmed);
+  }
+  return [...map.values()];
+}
+
+function parseMaxAtoms(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_MAX_ATOMS;
+  return Math.min(parsed, 20);
+}
+
+function significantWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 4 && !STOPWORDS.has(word));
+}
+
+/** Rdzeń do porównania odmiany: pierwsze 6 znaków (akwakultury ≈ akwakulturze). */
+function stem(word: string): string {
+  return word.slice(0, 6);
 }
 
 function pickEvidence(results: SearchResult[]): EvidenceItem[] {
@@ -155,7 +323,7 @@ function reconcile(
   }
 
   const source = evidence[judged.source_index];
-  if (!source || !/^https?:\/\//i.test(source.url)) {
+  if (!source || !/^https?:\/\//i.test(source.url) || source.summary.trim().length === 0) {
     return { claim, verdict: "uncertain", evidence_url: "" };
   }
   return { claim, verdict: judged.verdict, evidence_url: source.url };
@@ -169,10 +337,21 @@ async function verifyWithGemini(atoms: R2Atom[], deps: FactcheckDeps): Promise<F
       responseSchema: R3_RESPONSE_SCHEMA,
       search: true,
     });
-    return { status: "ok", result: R3Schema.parse(parseSynthesisJson(raw)) };
+    const result = R3Schema.parse(parseSynthesisJson(raw));
+    const stats = emptyStats();
+    for (const item of result.results) {
+      if (item.verdict === "confirmed") stats.confirmed += 1;
+      else if (item.verdict === "refuted") stats.refuted += 1;
+      else stats.uncertain += 1;
+    }
+    return { status: "ok", result, stats };
   } catch (error) {
     return { status: "error", error: formatLlmError(error, "R3") };
   }
+}
+
+function emptyStats(): VerifyStats {
+  return { searches: 0, serp: 0, fetches: 0, confirmed: 0, refuted: 0, uncertain: 0 };
 }
 
 function message(error: unknown): string {

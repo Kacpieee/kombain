@@ -5,7 +5,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 
 ## TERAZ
 
-- [ ] F2-T9b R3 recall tuning: query builder (encje/liczby/rok, cięcie na granicy słowa, `ori_question`), bramka trafności dowodów + SERP fallback, warunkowy Fetch przy liczbach, metryki `verify_*` w `run_summary`, `VERIFY_MAX_ATOMS` — [CRITICAL]
 - [ ] F3-T1 `apps/web` Astro Hybrid + `directus.ts` + strony `/`, `/kategoria/[slug]`, `/artykul/[slug]` + Cache headers — [SAFE]
 
 ## KIEDYŚ
@@ -14,5 +13,7 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 - [ ] OPT: licznik `research_failed`/`draft_rate` w `run_summary` (domknąć po F2-T9b) — [SAFE]
 - [ ] OPT: M2M alias „tags” w Directusie (edycja tagów w widoku artykułu) — [SAFE]
 - [ ] OPT: naprawa `scripts/verify.sh` (maskowanie exit code, martwy glob `prompts/*.md`, sekrety w `deploy/`, false-positive na literały testów) — [SAFE]
+- [ ] OPT: bramka R3 — stoplista all-caps rzeczowników, wymóg encji nieliczbowej, ≥2 rdzenie spoza top-100 PL (FP), oraz recall akronimów na początku zdania i `raw[1]` przy pustym `raw[0]` — [SAFE]
+- [ ] OPT: metryki R3 — `verify_*` także przy błędzie R3, `fetch_attempts/fetch_fail`, jedno źródło `VERIFY_MAX_ATOMS` (config → serwis) — [SAFE]
 - [ ] OPT: indeks `article_tags(tag_id)` (przyszłe „artykuły po tagu”) — [CRITICAL]
 - [ ] OPT: czyszczenie wygasłych `article_failures` (>30 dni) — [SAFE]

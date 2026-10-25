@@ -8,6 +8,7 @@ import type { ArticleOutcome } from "./pipeline.js";
 import { ingestSource } from "./services/ingestion.js";
 import type { RawArticleCandidate, SourceForIngestion } from "./services/ingestion.js";
 import { formatRunSummary, shouldAlert } from "./services/notify.js";
+import type { VerifyStats } from "./services/factcheck.js";
 
 export interface RunReport {
   started_at: string;
@@ -24,6 +25,11 @@ export interface RunReport {
   fallback_used: number;
   image_fallback_used: number;
   source_errors: number;
+  verify_confirmed: number;
+  verify_refuted: number;
+  verify_uncertain: number;
+  verify_serp_used: number;
+  verify_fetches: number;
 }
 
 export interface OrchestratorDeps {
@@ -78,6 +84,11 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     fallback_used: 0,
     image_fallback_used: 0,
     source_errors: 0,
+    verify_confirmed: 0,
+    verify_refuted: 0,
+    verify_uncertain: 0,
+    verify_serp_used: 0,
+    verify_fetches: 0,
   };
 
   if (!deps.dryRun && deps.healthcheck) {
@@ -258,16 +269,27 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
   }
 }
 
+function countVerify(report: RunReport, verify: VerifyStats | undefined): void {
+  if (!verify) return;
+  report.verify_confirmed += verify.confirmed;
+  report.verify_refuted += verify.refuted;
+  report.verify_uncertain += verify.uncertain;
+  report.verify_serp_used += verify.serp;
+  report.verify_fetches += verify.fetches;
+}
+
 function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
   switch (outcome.status) {
     case "published":
       report.published += 1;
       if (outcome.via === "scrapingant") report.fallback_used += 1;
       if (outcome.imageVia === "default") report.image_fallback_used += 1;
+      countVerify(report, outcome.verify);
       break;
     case "draft":
       report.draft += 1;
       if (outcome.via === "scrapingant") report.fallback_used += 1;
+      countVerify(report, outcome.verify);
       break;
     case "rejected":
       report.rejected += 1;

@@ -10,6 +10,7 @@ const envSchema = z.object({
   DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com"),
   SEARCH_PROVIDER: z.enum(["deepseek", "gemini", "off"]).default("deepseek"),
   VERIFY_PROVIDER: z.enum(["deepseek", "gemini"]).default("deepseek"),
+  VERIFY_MAX_ATOMS: z.coerce.number().int().min(1).max(20).catch(8),
   MAX_PUBLISHED_PER_RUN: z.coerce.number().int().min(1).max(2).default(2),
   MAX_LINKS_PER_SOURCE: z.coerce.number().int().min(1).max(15).default(15),
   MAX_PROCESSED_PER_RUN: z.coerce.number().int().min(1).max(20).default(10),

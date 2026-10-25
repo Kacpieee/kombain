@@ -16,6 +16,7 @@ const CONFIG: AppConfig = {
   DEEPSEEK_BASE_URL: "https://api.deepseek.com",
   SEARCH_PROVIDER: "deepseek",
   VERIFY_PROVIDER: "deepseek",
+  VERIFY_MAX_ATOMS: 8,
   MAX_PUBLISHED_PER_RUN: 2,
   MAX_LINKS_PER_SOURCE: 15,
   MAX_PROCESSED_PER_RUN: 10,
@@ -368,6 +369,79 @@ describe("runOnce", () => {
     const dry = events.find((event) => event.event === "dry_run");
     expect(dry).toMatchObject({ wouldBe: "draft", stage: "R3", needsHumanCheck: true });
     expect(dry?.issues).toEqual(["uncertain: firma X ma 40% rynku"]);
+  });
+
+  it("agreguje statystyki verify w run_summary", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const verify = { searches: 2, serp: 1, fetches: 1, confirmed: 1, refuted: 0, uncertain: 0 };
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(
+        async (): Promise<ArticleOutcome> => ({
+          status: "published",
+          articleId: "a",
+          slug: "s",
+          via: "direct",
+          imageVia: "r2",
+          verify,
+        })
+      ),
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      verify_confirmed: 1,
+      verify_serp_used: 1,
+      verify_fetches: 1,
+    });
+  });
+
+  it("draft również agreguje statystyki verify (uncertain)", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process: vi.fn(
+        async (): Promise<ArticleOutcome> => ({
+          status: "draft",
+          articleId: "a",
+          slug: "s",
+          via: "direct",
+          verify: { searches: 1, serp: 0, fetches: 1, confirmed: 0, refuted: 0, uncertain: 1 },
+        })
+      ),
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      draft: 1,
+      verify_uncertain: 1,
+      verify_fetches: 1,
+      verify_confirmed: 0,
+    });
   });
 
   it("realny run przekazuje notify do pipeline, dry-run tylko persist:false", async () => {

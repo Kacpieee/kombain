@@ -409,11 +409,13 @@ describe("reviewArticle — R1/R2/R3", () => {
       verifyExternal: async () => ({
         status: "ok",
         result: { results: [{ claim: "Firma X ma 40% rynku.", verdict: "confirmed", evidence_url: "https://e.com" }] },
+        stats: { searches: 1, serp: 0, fetches: 0, confirmed: 1, refuted: 0, uncertain: 0 },
       }),
     });
 
     expect(result.status).toBe("published");
     expect(result.external[0]?.verdict).toBe("confirmed");
+    expect(result.verify).toEqual({ searches: 1, serp: 0, fetches: 0, confirmed: 1, refuted: 0, uncertain: 0 });
   });
 
   it("brak atomów external → R3 nie jest wołane", async () => {

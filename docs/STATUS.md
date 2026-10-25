@@ -28,7 +28,8 @@
 - prompt R2 wymaga **dosłownego cytatu bez tagów HTML** (maks. 20 atomów) — parafrazy powodowały 6/6 draftów
 - **F2-T8 research**: Bramkarz → research → Redaktor z briefem i zakazem nowych faktów; atomy pokryte briefem pomijają R3
 - **F2-T8b**: research na DeepSeek Search (2 kwerendy) + dystylacja Flash-Lite (URL z indeksu wyniku), fallback SERP (ScrapingAnt + DDG), alert przy błędzie; `SEARCH_PROVIDER=gemini` rollback
-- **F2-T9**: R3 na DeepSeek — Search na claim → top-5 dowodów → Fetch przy pustych summary → Flash-Lite sędzia (indeks→URL, cap 8), fallback SERP, `VERIFY_PROVIDER=gemini` rollback; 264 testy unit + 33 PG
+- **F2-T9**: R3 na DeepSeek — Search na claim → top-5 dowodów → Fetch przy pustych summary → Flash-Lite sędzia (indeks→URL, cap 8), fallback SERP, `VERIFY_PROVIDER=gemini` rollback
+- **F2-T9b**: R3 recall tuning — query builder (encje/liczby/rok, granica słowa), bramka trafności + SERP fallback, warunkowy Fetch, metryki `verify_*` w `run_summary`, `VERIFY_MAX_ATOMS`; 285 testów unit + 33 PG
 
 ## Następne (z plans.md TERAZ)
 - F3-T1 Astro Hybrid + strony

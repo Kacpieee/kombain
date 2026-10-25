@@ -21,6 +21,11 @@ const REPORT: RunReport = {
   fallback_used: 0,
   image_fallback_used: 0,
   source_errors: 0,
+  verify_confirmed: 0,
+  verify_refuted: 0,
+  verify_uncertain: 0,
+  verify_serp_used: 0,
+  verify_fetches: 0,
 };
 
 describe("parseArgs", () => {
@@ -159,6 +164,7 @@ describe("runCli", () => {
       DEEPSEEK_BASE_URL: "https://api.deepseek.com",
       SEARCH_PROVIDER: "deepseek" as const,
       VERIFY_PROVIDER: "deepseek" as const,
+      VERIFY_MAX_ATOMS: 8,
       MAX_PUBLISHED_PER_RUN: 2,
       MAX_LINKS_PER_SOURCE: 15,
       MAX_PROCESSED_PER_RUN: 10,

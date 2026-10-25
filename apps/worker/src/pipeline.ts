@@ -12,6 +12,7 @@ import { researchTopic } from "./services/research.js";
 import { reviewArticle } from "./services/review.js";
 import { scrapeArticle } from "./services/scraper.js";
 import type { ReviewOutcome } from "./services/review.js";
+import type { VerifyStats } from "./services/factcheck.js";
 import type { EditorOut } from "./prompts.js";
 
 export type ArticleOutcome =
@@ -21,8 +22,9 @@ export type ArticleOutcome =
       slug: string;
       via: "direct" | "scrapingant" | null;
       imageVia: "r2" | "default";
+      verify?: VerifyStats;
     }
-  | { status: "draft"; articleId: string; slug: string; via: "direct" | "scrapingant" | null; imageVia?: "r2" | "default" }
+  | { status: "draft"; articleId: string; slug: string; via: "direct" | "scrapingant" | null; imageVia?: "r2" | "default"; verify?: VerifyStats }
   | { status: "rejected"; articleId: string | null; via: "direct" | "scrapingant" | null }
   | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" }
   | { status: "error"; stage: "scrape" | "gate" | "editor" | "review" | "persist" | "pipeline"; error: string }
@@ -157,7 +159,9 @@ export async function processArticle(
       needsHumanCheck: true,
     });
 
-    if (saved.status === "draft") return { status: "draft", articleId: saved.articleId, slug: saved.slug, via };
+    if (saved.status === "draft") {
+      return { status: "draft", articleId: saved.articleId, slug: saved.slug, via };
+    }
     return persistFailure(saved.status, "reason" in saved ? saved.reason : undefined);
   }
 
@@ -190,7 +194,9 @@ export async function processArticle(
       needsHumanCheck: reviewed.needsHumanCheck || reviewed.stage !== null,
     });
 
-    if (saved.status === "draft") return { status: "draft", articleId: saved.articleId, slug: saved.slug, via };
+    if (saved.status === "draft") {
+      return { status: "draft", articleId: saved.articleId, slug: saved.slug, via, verify: reviewed.verify };
+    }
     return persistFailure(saved.status);
   }
 
@@ -218,7 +224,14 @@ export async function processArticle(
   });
 
   if (saved.status === "published") {
-    return { status: "published", articleId: saved.articleId, slug: saved.slug, via, imageVia: image.via };
+    return {
+      status: "published",
+      articleId: saved.articleId,
+      slug: saved.slug,
+      via,
+      imageVia: image.via,
+      verify: reviewed.verify,
+    };
   }
   return persistFailure(saved.status);
 }

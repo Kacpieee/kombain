@@ -235,6 +235,26 @@ describe("processArticle — ścieżki", () => {
     expect(deps.synthesize).toHaveBeenCalledTimes(2);
   });
 
+  it("przenosi statystyki verify z review do wyniku", async () => {
+    const verify = { searches: 2, serp: 1, fetches: 1, confirmed: 1, refuted: 0, uncertain: 0 };
+    const deps = base({
+      review: vi.fn(async () => ({
+        status: "published" as const,
+        needsHumanCheck: false,
+        stage: null,
+        issues: [],
+        cleanedHtml: ARTICLE.content_html,
+        removedInferences: [],
+        external: [],
+        verify,
+        article: ARTICLE,
+      })),
+    });
+
+    const result = await processArticle(POOL, CANDIDATE, deps);
+    expect(result).toMatchObject({ status: "published", verify });
+  });
+
   it("dry-run: published bez media i bez zapisu", async () => {
     const deps = base({ persist: false });
     const result = await processArticle(POOL, CANDIDATE, deps);
