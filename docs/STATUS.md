@@ -18,6 +18,10 @@
 ## W trakcie
 - (pusto)
 
+## Następne (z plans.md TERAZ)
+- F2-T9b R3 recall tuning (query builder, relevance gate, warunkowy Fetch, metryki)
+- F3-T1 Astro Hybrid + strony
+
 ## Hotfixy po pierwszym runie na VPS
 - dry_run loguje `stage/needsHumanCheck/issues`
 - `stripInferences` usuwa wszystkie wystąpienia, fuzzy ≥0.75 z ochroną atomów supported/external
