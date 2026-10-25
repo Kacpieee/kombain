@@ -41,5 +41,15 @@ if [ -f packages/db/queries.ts ]; then
   if grep -n '{{' packages/db/queries.ts; then fail "interpolacja {{ }} w SQL"; else echo "ok: SQL parametryzowane"; fi
 else echo "skip: brak queries.ts (przed F1-T1)"; fi
 
+say "6. Astro build (apps/web)"
+if [ -f apps/web/astro.config.mjs ] && [ -d node_modules/astro ]; then
+  if npm run build --workspace @kombain/web >/tmp/kombain-astro-build.log 2>&1; then
+    echo "ok: astro build"
+  else
+    tail -n 40 /tmp/kombain-astro-build.log
+    fail "astro build"
+  fi
+else echo "skip: brak Astro (przed F3-T1)"; fi
+
 if [ "$FAIL" -ne 0 ]; then echo "RESULT: FAIL"; exit 1; fi
 echo "RESULT: PASS"

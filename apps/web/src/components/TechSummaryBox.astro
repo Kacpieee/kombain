@@ -1,0 +1,30 @@
+---
+import type { TechSummary } from "../lib/directus";
+
+interface Props {
+  summary: TechSummary | null;
+}
+
+const { summary } = Astro.props;
+---
+{
+  summary && (
+    <section class="box tech-summary" aria-labelledby="tech-heading">
+      <h2 id="tech-heading">Tech summary</h2>
+      <dl>
+        <div>
+          <dt>Podmiot</dt>
+          <dd>{summary.podmiot}</dd>
+        </div>
+        <div>
+          <dt>Technologia</dt>
+          <dd>{summary.technologia}</dd>
+        </div>
+        <div>
+          <dt>Cel wdrożenia</dt>
+          <dd>{summary.cel_wdrozenia}</dd>
+        </div>
+      </dl>
+    </section>
+  )
+}

@@ -1,0 +1,97 @@
+---
+import TldrBox from "../../components/TldrBox.astro";
+import TechSummaryBox from "../../components/TechSummaryBox.astro";
+import MainLayout from "../../layouts/MainLayout.astro";
+import {
+  applyCacheHeaders,
+  articleImage,
+  categoryById,
+  fetchArticleBySlug,
+  fetchCategories,
+  formatDate,
+  normalizeTechSummary,
+  normalizeTldr,
+  NO_STORE_CACHE_CONTROL,
+  publishedDate,
+  resolveConfig,
+  safeSourceUrl,
+  sourceHost,
+} from "../../lib/directus";
+
+const slug = Astro.params.slug ?? "";
+const runtimeEnv = Astro.locals.runtime?.env ?? {};
+const config = resolveConfig(
+  runtimeEnv.DIRECTUS_URL ?? import.meta.env.DIRECTUS_URL,
+  runtimeEnv.DIRECTUS_PUBLIC_READ_TOKEN ?? import.meta.env.DIRECTUS_PUBLIC_READ_TOKEN
+);
+
+const [categories, article] = await Promise.all([
+  fetchCategories(config),
+  fetchArticleBySlug(config, slug),
+]);
+
+const category = article ? categoryById(categories, article.category_id) : null;
+const image = article ? articleImage(article) : null;
+const sourceUrl = article ? safeSourceUrl(article.source_url) : null;
+const tldr = article ? normalizeTldr(article.tldr) : [];
+const techSummary = article ? normalizeTechSummary(article.tech_summary) : null;
+const date = article ? formatDate(publishedDate(article)) : "";
+const description = tldr[0] ?? (article ? article.title : "Nie znaleziono artykułu");
+
+if (article) applyCacheHeaders(Astro.response.headers);
+else applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
+
+if (!article) Astro.response.status = 404;
+---
+<MainLayout title={article ? article.title : "Nie znaleziono artykułu"} description={description} categories={categories} activeCategory={category?.slug}>
+  {
+    article ? (
+      <>
+        <header class="shell article-header">
+          {category && (
+            <a class="card-category" href={`/kategoria/${category.slug}`}>
+              {category.name}
+            </a>
+          )}
+          <h1>{article.title}</h1>
+          <div class="article-meta">
+            {date && <time datetime={publishedDate(article) ?? undefined}>{date}</time>}
+            <span>Zweryfikowano względem źródeł</span>
+          </div>
+        </header>
+
+        <div class="shell">
+          {image && (
+            <figure class="article-hero">
+              <img src={image} alt="" width="1200" height="675" loading="eager" decoding="async" />
+            </figure>
+          )}
+
+          <div class="article-layout">
+            <article class="article-body" set:html={article.text_content ?? "<p>Brak treści.</p>"} />
+
+            <aside class="sidebar">
+              <TldrBox items={tldr} />
+              <TechSummaryBox summary={techSummary} />
+            </aside>
+          </div>
+
+          {sourceUrl && (
+            <p class="source-line">
+              Źródło:{" "}
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow">
+                {sourceHost(sourceUrl)}
+              </a>
+            </p>
+          )}
+        </div>
+      </>
+    ) : (
+      <section class="shell not-found">
+        <p class="eyebrow">404</p>
+        <h1>Nie ma takiego artykułu</h1>
+        <p><a href="/">Wróć na stronę główną</a></p>
+      </section>
+    )
+  }
+</MainLayout>

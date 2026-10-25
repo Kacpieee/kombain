@@ -1,0 +1,74 @@
+---
+import ArticleCard from "../components/ArticleCard.astro";
+import MainLayout from "../layouts/MainLayout.astro";
+import {
+  applyCacheHeaders,
+  categoryById,
+  fetchCategories,
+  fetchPublishedArticles,
+  resolveConfig,
+} from "../lib/directus";
+
+const runtimeEnv = Astro.locals.runtime?.env ?? {};
+const config = resolveConfig(
+  runtimeEnv.DIRECTUS_URL ?? import.meta.env.DIRECTUS_URL,
+  runtimeEnv.DIRECTUS_PUBLIC_READ_TOKEN ?? import.meta.env.DIRECTUS_PUBLIC_READ_TOKEN
+);
+
+const [categories, articles] = await Promise.all([
+  fetchCategories(config),
+  fetchPublishedArticles(config, { limit: 24 }),
+]);
+const cards = articles.map((article) => ({ article, category: categoryById(categories, article.category_id) }));
+const latestDate = articles[0]?.published_at ?? articles[0]?.created_at ?? null;
+
+applyCacheHeaders(Astro.response.headers);
+---
+<MainLayout title="kombain.pl — technologia, która uprawia" categories={categories}>
+  <section class="hero shell">
+    <p class="eyebrow">AgTech bez ściemy</p>
+    <h1>Technologia, która uprawia.</h1>
+    <p>
+      Rolnictwo precyzyjne, drony, biotechnologia i agroenergetyka. Każdy fakt z linkiem do źródła,
+      każdy artykuł zweryfikowany przed publikacją.
+    </p>
+  </section>
+
+  <section class="shell" aria-labelledby="latest-heading">
+    <div class="section-heading">
+      <h2 id="latest-heading">Najnowsze</h2>
+      {latestDate && <span>Aktualizacja: <time datetime={latestDate}>{new Date(latestDate).toLocaleDateString("pl-PL")}</time></span>}
+    </div>
+
+    {
+      cards.length > 0 ? (
+        <div class="card-grid">
+          {cards.map(({ article, category }) => (
+            <ArticleCard article={article} categoryName={category?.name} categorySlug={category?.slug} />
+          ))}
+        </div>
+      ) : (
+        <p class="muted">Brak opublikowanych artykułów. Worker dopiero rozgrzewa kombajn.</p>
+      )
+    }
+  </section>
+
+  {
+    categories.length > 0 && (
+      <section class="shell" aria-labelledby="categories-heading" style="margin-top: 2.5rem">
+        <div class="section-heading">
+          <h2 id="categories-heading">Działy</h2>
+        </div>
+        <ul class="category-list">
+          {categories.map((category) => (
+            <li>
+              <a class="category-chip" href={`/kategoria/${category.slug}`}>
+                {category.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</MainLayout>

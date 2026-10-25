@@ -360,3 +360,26 @@ Podgląd:
 ```bash
 docker exec n8n-docker-postgres-1 psql -U kombain_user -d kombain -c "SELECT source_url, attempts, last_stage, last_seen_at FROM article_failures ORDER BY last_seen_at DESC LIMIT 10;"
 ```
+
+## 14. Frontend Astro (Cloudflare Pages)
+
+`apps/web` to Astro SSR (`output: "server"`) z adapterem `@astrojs/cloudflare`.
+
+**Build (Pages):**
+- Root directory: repo root
+- Build command: `npm run build --workspace @kombain/web`
+- Output directory: `apps/web/dist`
+
+**Env w Pages (Production + Preview):**
+```bash
+DIRECTUS_URL=https://cms.kombain.pl
+DIRECTUS_PUBLIC_READ_TOKEN=<token read-only>
+```
+
+**Cache:** trasy SSR ustawiają `Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400`; strony 404 mają `no-store`. Po ręcznej edycji artykułu w Directusie wyczyść cache Cloudflare (F3-T2: webhook).
+
+**Smoke test:**
+```bash
+curl -sI https://kombain.pl/ | grep -i cache-control
+curl -s https://kombain.pl/ | grep -o '<title>[^<]*' | head -1
+```

@@ -4,6 +4,7 @@ archiwum/
 !.env.example
 node_modules/
 dist/
+.astro/
 *.sqlite
 docs/vps-inventory.md
 deploy/.env

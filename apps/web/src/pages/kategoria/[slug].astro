@@ -1,0 +1,66 @@
+---
+import ArticleCard from "../../components/ArticleCard.astro";
+import MainLayout from "../../layouts/MainLayout.astro";
+import {
+  applyCacheHeaders,
+  categoryBySlug,
+  fetchCategories,
+  fetchPublishedArticles,
+  resolveConfig,
+  NO_STORE_CACHE_CONTROL,
+} from "../../lib/directus";
+
+const slug = Astro.params.slug ?? "";
+const runtimeEnv = Astro.locals.runtime?.env ?? {};
+const config = resolveConfig(
+  runtimeEnv.DIRECTUS_URL ?? import.meta.env.DIRECTUS_URL,
+  runtimeEnv.DIRECTUS_PUBLIC_READ_TOKEN ?? import.meta.env.DIRECTUS_PUBLIC_READ_TOKEN
+);
+
+const categories = await fetchCategories(config);
+const category = categoryBySlug(categories, slug);
+const articles = category ? await fetchPublishedArticles(config, { categoryId: category.id, limit: 30 }) : [];
+
+if (category) applyCacheHeaders(Astro.response.headers);
+else applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
+
+if (!category) Astro.response.status = 404;
+
+const description = category?.description ?? "Kategoria na kombain.pl";
+---
+<MainLayout title={category ? category.name : "Nie znaleziono kategorii"} description={description} categories={categories} activeCategory={category?.slug}>
+  {
+    category ? (
+      <>
+        <section class="hero shell">
+          <p class="eyebrow">Dział</p>
+          <h1>{category.name}</h1>
+          {category.description && <p>{category.description}</p>}
+        </section>
+
+        <section class="shell" aria-labelledby="category-articles">
+          <div class="section-heading">
+            <h2 id="category-articles">Artykuły</h2>
+            <span>{articles.length} {articles.length === 1 ? "materiał" : "materiałów"}</span>
+          </div>
+
+          {articles.length > 0 ? (
+            <div class="card-grid">
+              {articles.map((article) => (
+                <ArticleCard article={article} categoryName={category.name} categorySlug={category.slug} />
+              ))}
+            </div>
+          ) : (
+            <p class="muted">Brak opublikowanych artykułów w tym dziale.</p>
+          )}
+        </section>
+      </>
+    ) : (
+      <section class="shell not-found">
+        <p class="eyebrow">404</p>
+        <h1>Nie ma takiego działu</h1>
+        <p><a href="/">Wróć na stronę główną</a></p>
+      </section>
+    )
+  }
+</MainLayout>

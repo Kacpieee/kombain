@@ -1,0 +1,38 @@
+---
+import type { Article, ArticleWithCategory } from "../lib/directus";
+import { articleImage, excerpt, formatDate, publishedDate } from "../lib/directus";
+
+interface Props {
+  article: Article | ArticleWithCategory;
+  categoryName?: string;
+  categorySlug?: string;
+}
+
+const { article, categoryName, categorySlug } = Astro.props;
+const image = articleImage(article);
+const date = formatDate(publishedDate(article));
+const summary = excerpt(article.text_content, 145);
+---
+<article class="card">
+  <a class="card-media" href={`/artykul/${article.slug}`} tabindex="-1" aria-hidden="true">
+    {
+      image ? (
+        <img src={image} alt="" width="1200" height="675" loading="lazy" decoding="async" />
+      ) : (
+        <span class="card-placeholder">🌱</span>
+      )
+    }
+  </a>
+  <div class="card-body">
+    {
+      categoryName && categorySlug && (
+        <a class="card-category" href={`/kategoria/${categorySlug}`}>
+          {categoryName}
+        </a>
+      )
+    }
+    <h3><a href={`/artykul/${article.slug}`}>{article.title}</a></h3>
+    {summary && <p class="card-excerpt">{summary}</p>}
+    {date && <time class="card-date" datetime={publishedDate(article) ?? undefined}>{date}</time>}
+  </div>
+</article>

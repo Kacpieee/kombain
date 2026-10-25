@@ -1,0 +1,22 @@
+---
+import MainLayout from "../layouts/MainLayout.astro";
+import { applyCacheHeaders, fetchCategories, NO_STORE_CACHE_CONTROL, resolveConfig } from "../lib/directus";
+
+const runtimeEnv = Astro.locals.runtime?.env ?? {};
+const config = resolveConfig(
+  runtimeEnv.DIRECTUS_URL ?? import.meta.env.DIRECTUS_URL,
+  runtimeEnv.DIRECTUS_PUBLIC_READ_TOKEN ?? import.meta.env.DIRECTUS_PUBLIC_READ_TOKEN
+);
+
+const categories = await fetchCategories(config).catch(() => []);
+applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
+Astro.response.status = 404;
+---
+<MainLayout title="Nie znaleziono strony" categories={categories}>
+  <section class="shell not-found">
+    <p class="eyebrow">404</p>
+    <h1>Nie ma takiej strony</h1>
+    <p>Link mógł się zmienić, a artykuł mógł zostać cofnięty do redakcji.</p>
+    <p><a href="/">Wróć na stronę główną</a></p>
+  </section>
+</MainLayout>
