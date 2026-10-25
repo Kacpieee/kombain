@@ -12,6 +12,9 @@ const CONFIG: AppConfig = {
   GEMINI_LITE_MODEL: "lite",
   GEMINI_PRO_MODEL: "pro",
   SCRAPINGANT_API_KEY: undefined,
+  DEEPSEEK_API_KEY: undefined,
+  DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+  SEARCH_PROVIDER: "deepseek",
   MAX_PUBLISHED_PER_RUN: 2,
   MAX_LINKS_PER_SOURCE: 15,
   MAX_PROCESSED_PER_RUN: 10,
@@ -364,6 +367,38 @@ describe("runOnce", () => {
     const dry = events.find((event) => event.event === "dry_run");
     expect(dry).toMatchObject({ wouldBe: "draft", stage: "R3", needsHumanCheck: true });
     expect(dry?.issues).toEqual(["uncertain: firma X ma 40% rynku"]);
+  });
+
+  it("realny run przekazuje notify do pipeline, dry-run tylko persist:false", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const notify = vi.fn(async (_text: string) => true);
+    const process = vi.fn(
+      async (_pool: Pool, _candidate: RawArticleCandidate, _options?: { persist?: boolean; notify?: unknown }) =>
+        published()
+    );
+    const infra = {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify,
+      healthcheck: async () => true,
+      log: () => {},
+    };
+
+    await runOnce(POOL, CONFIG, infra);
+    expect(process.mock.calls[0]?.[2]).toEqual({ notify });
+
+    process.mockClear();
+    await runOnce(POOL, CONFIG, { ...infra, dryRun: true });
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
   });
 
   it("backoff: link po 3 próbach jest pomijany bez pipeline", async () => {

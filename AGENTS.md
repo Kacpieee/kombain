@@ -8,7 +8,7 @@ Budujesz deterministyczny pipeline TypeScript zastępujący `Stary workflow - ba
 Kolejka: `docs/plans.md` (najwyższy TERAZ) + `docs/STATUS.md` (dziennik). Jeden task na raz.
 
 Dev-harness (to środowisko, Opencode): default `opencode-go/deepseek-v4.1-flash` z `opencode.jsonc`. Nie musisz ręcznie ustawiać modelu.
-Runtime (VPS, poza tym środowiskiem): wyłącznie Google API — `gemini-3.1-flash-lite` (bramkarz) + `gemini-3.8-flash` (redaktor + 3x review z search grounding). deepseek NIE jest używany na VPS.
+Runtime (VPS, poza tym środowiskiem): generacja i review — Google API (`gemini-3.1-flash-lite` bramkarz/dystylacja, `gemini-3.8-flash` redaktor + review z search grounding); **research i (docelowo, F2-T9) weryfikacja faktów — DeepSeek Search/Fetch API** (`api.deepseek.com/v1/tools/*`, szeroki zasięg źródeł, fallback SERP przez ScrapingAnt). deepseek-v4.1 (dev-harness) NIE jest używany na VPS.
 
 Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `scripts/verify.sh` ↔ `Reviewer` → 1 commit Conventional → `git push origin`.
 
@@ -32,7 +32,7 @@ Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `s
 | RSS | `rss-parser` |
 | Scrape listy | `ScrapingAnt API` + `cheerio` |
 | Scrape artykułu | `fetch` UA Chrome 10s → fallback ScrapingAnt przy `403/429/CF-Just a moment` → `linkedom + @mozilla/readability` → `sanitize-html` |
-| LLM | `@google/genai`, `gemini-3.1-flash-lite` (gate) + `gemini-3.8-flash` (synteza + review z search grounding), walidacja `zod` |
+| LLM | `@google/genai`, `gemini-3.1-flash-lite` (gate + dystylacja researchu) + `gemini-3.8-flash` (synteza + review z search grounding); **DeepSeek Search/Fetch** (`api.deepseek.com/v1/tools/*`) do researchu i weryfikacji faktów, fallback SERP (ScrapingAnt + DuckDuckGo HTML), walidacja `zod` |
 | Media | `sharp` 1200x675 `webp q80` → S3 SDK na R2 `articles/{slug}.webp` |
 | Web | Astro + `@astrojs/cloudflare`, `output: server` |
 | Lint/test | `tsc --noEmit`, `vitest`, `eslint`/`biome` |
@@ -64,8 +64,8 @@ Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `s
 
 ## 4. Sekrety (twarde)
 
-Nigdy w repo ani w diffie: `.env`, `GEMINI_API_KEY`, `SCRAPINGANT_API_KEY`, `DIRECTUS_PUBLIC_READ_TOKEN`, JWT, `*.pem/*.key`, `*.sqlite`.
-`GEMINI/SCRAPINGANT` tylko VPS/Docker env. `DATABASE_URL` (reader) vs `DIRECT_DATABASE_URL` (writer TCP). Strona/Functions używa wyłącznie Directus REST read-only.
+Nigdy w repo ani w diffie: `.env`, `GEMINI_API_KEY`, `SCRAPINGANT_API_KEY`, `DEEPSEEK_API_KEY`, `DIRECTUS_PUBLIC_READ_TOKEN`, JWT, `*.pem/*.key`, `*.sqlite`.
+`GEMINI/SCRAPINGANT/DEEPSEEK` tylko VPS/Docker env. `DATABASE_URL` (reader) vs `DIRECT_DATABASE_URL` (writer TCP). Strona/Functions używa wyłącznie Directus REST read-only.
 
 ## 5. Git, commity, kolejka
 

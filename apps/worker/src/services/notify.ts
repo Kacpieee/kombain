@@ -99,6 +99,7 @@ function envSecrets(): string[] {
   return [
     process.env.GEMINI_API_KEY,
     process.env.SCRAPINGANT_API_KEY,
+    process.env.DEEPSEEK_API_KEY,
     process.env.TELEGRAM_BOT_TOKEN,
     process.env.R2_ACCESS_KEY_ID,
     process.env.R2_SECRET_ACCESS_KEY,

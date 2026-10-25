@@ -38,6 +38,8 @@ export type ArticleOutcome =
 export interface PipelineOverrides {
   /** `false` = dry-run: bez media, bez save/reject (tylko odczyt DB). */
   persist?: boolean;
+  /** Alert (np. research fallback) — wstrzykiwany przez orchestrator. */
+  notify?: (text: string) => Promise<unknown>;
   duplicateCheck?: (link: string) => Promise<boolean>;
   scrape?: typeof scrapeArticle;
   history?: typeof fetchHistoricalContext30d;
@@ -123,6 +125,9 @@ export async function processArticle(
   const originalTitle = scraped.article.title || candidate.originalTitle;
   const brief = await research({ title: originalTitle, text: scraped.article.text, category });
   const researchFacts = brief.status === "ok" ? brief.facts : [];
+  if (brief.status === "error" && persist && overrides.notify) {
+    await overrides.notify(`⚠️ research fallback: ${brief.error}`);
+  }
   const editorInput = {
     category,
     originalTitle,

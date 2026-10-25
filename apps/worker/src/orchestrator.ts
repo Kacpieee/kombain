@@ -189,7 +189,11 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
 
         let outcome: ArticleOutcome;
         try {
-          outcome = await process(db, candidate, options.dryRun ? { persist: false } : undefined);
+          outcome = await process(
+            db,
+            candidate,
+            options.dryRun ? { persist: false } : { notify: options.notify }
+          );
         } catch (error) {
           outcome = {
             status: "error",

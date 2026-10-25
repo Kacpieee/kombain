@@ -1,44 +1,49 @@
-# Final report — F2-T8 (research stage przed Redaktorem)
+# Final report — F2-T8b (research: DeepSeek Search + dystylacja)
 
 ## Status
-Done (Mode: CRITICAL — zmiana pipeline'u i promptów)
+Done (Mode: CRITICAL)
 
 ## Summary
-Między Bramkarzem a Redaktorem wszedł etap **research**: Gemini Pro z search grounding zbiera 5–10 weryfikowalnych faktów z URL-ami (szeroki zasięg: oficjalne, prasa, blogi eksperckie, agregatory). Redaktor dostaje brief i **nie wolno mu wprowadzać faktów spoza źródła i briefu**; atomy `external` pokryte briefem nie idą do R3, więc mniej fałszywych `uncertain → draft`. Błąd researchu nie blokuje artykułu (brief pusty, zachowanie jak dotychczas).
+Research nie używa już Gemini Pro z groundingiem. Główna ścieżka: **DeepSeek Search** (2 krótkie kwerendy, $0.0015/artykuł) → **dystylacja Flash-Lite** do 5–10 faktów, gdzie URL jest brany z indeksu wyniku (model nie może wymyślić linku). Fallback: **SERP (ScrapingAnt + DuckDuckGo HTML)** → ta sama dystylacja. Gdy oba padną: artykuł leci bez briefu + alert Telegram. Gemini grounding został jako opcja rollbacku (`SEARCH_PROVIDER=gemini`).
 
 ## Changes
-- `apps/worker/src/prompts.ts` — `ResearchSchema`/`ResearchFact`, `buildResearchPrompt`, `EditorPromptInput.researchBrief`, sekcja „USTALONE FAKTY” + twarda zasada „zero nowych faktów”, reguła `external_refs` tylko z briefu
-- `apps/worker/src/services/research.ts` — `researchTopic` (`search: true`), `normalizeFacts` (http(s), dedupe po claim, min. 10 znaków, cap 10)
-- `apps/worker/src/pipeline.ts` — research po Bramkarzu, brief przekazany do `synthesize` i `review`; błąd researchu → pusty brief
-- `apps/worker/src/services/review.ts` — `ReviewDeps.researchBrief`; atomy external pokryte briefem pomijają R3 (`coveredByResearch`)
-- Testy: `research.test.ts` (5), pipeline +3 (brief, fallback, kolejność), review +3 (brief pomija R3, atom szerszy → R3, krótki atom → R3), editor prompt +2
-- `docs/plans.md`, `docs/STATUS.md`, `final-report.md`
+- `apps/worker/src/services/search/deepseek.ts` — `deepseekSearch` (POST `/v1/tools/search`, Bearer, retry 1× na 429/5xx, 401/402/403 → `SearchConfigError`), `serpSearch` (DDG HTML przez ScrapingAnt, dekodowanie `uddg`, cheerio)
+- `apps/worker/src/services/research.ts` — provider `deepseek|gemini|off`, `buildResearchQueries`, `factsFromDistill` (indeks→URL, cap 10, dedupe), fallback chain
+- `apps/worker/src/prompts.ts` — `buildDistillPrompt`, `DistillSchema`
+- `apps/worker/src/pipeline.ts` — alert przy błędzie researchu (tylko realny run)
+- `apps/worker/src/orchestrator.ts` — przekazuje `notify` do pipeline'u
+- `apps/worker/src/config.ts`, `.env.example` — `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `SEARCH_PROVIDER`
+- `AGENTS.md` — runtime: Gemini (generacja/review) + DeepSeek Search/Fetch (research/weryfikacja), sekrety
+- Testy: `search/deepseek.test.ts` (6), `research.test.ts` (13), pipeline +1 (alert/dry-run), orchestrator +1 (notify vs dry-run)
+- `docs/plans.md` (F2-T9 R3 DeepSeek przed F3), `docs/STATUS.md`
 
 ## Verification (liczbowo)
 - scripts/verify.sh: **pass** (exit 0)
 - guardrails (sekrety/SQL): **pass**
 - tsc --noEmit: **pass**
-- vitest: **235 passed, 0 failed, 33 skipped**
+- vitest: **251 passed, 0 failed, 33 skipped**
 - PG-docker: **33 passed** (bez zmian)
-- Zero sieci w testach (research/LLM przez wstrzykiwany `generate`)
+- Zero sieci w testach (mock `fetchImpl`, `search`, `serp`, `generate`)
 
 ## Review Loop Audit
 - Liczba rund Reviewera: 2
 - Przebieg rund:
-  - Runda 1: Request changes — 1 bloker (`coveredByResearch` akceptował atom szerszy niż fakt z briefu → dodatkowy fakt omijał R3)
-  - Runda 2: **Approve** — 0 blokerów; mutacje M1/M2 czerwienieją, testy brzegowe (długie/krótkie atomy) potwierdzone
+  - Runda 1: Request changes — 3 blokery (brak `DEEPSEEK_API_KEY` w deploy-doc; nieprzetestowane gałęzie: notify w orchestratorze, guard URL, puste wyniki; sekret poza redakcją/guardem)
+  - Runda 2: **Approve** — 0 blokerów; mutacje notify/guard URL/pustych wyników/alertu czerwienieją; dodatkowo dodane testy pustej dystylacji i filtra SERP
 - Ostatni werdykt (po ostatniej edycji kodu i ostatnim verify.sh): **Approve**
 
 ## Risks
-- Research szeroki (blogi/agregatory) → możliwe słabe źródła; liczby nadal warto potwierdzać w R3, ale brief je pomija (świadoma decyzja: mniej draftów kosztem ryzyka).
-- Błąd researchu jest cichy — pipeline jedzie dalej bez briefu, bez licznika `research_failed` w `run_summary` (do dodania).
-- Prompt injection z wyników wyszukiwania: brief trafia do promptu Redaktora jako dane; brak twardej sanityzacji treści faktów.
-- `coveredByResearch` ufa briefowi: atom zawarty w fakcie z researchu nie wraca do R3, więc błędny fakt z researchu (halucynacja groundingu) trafi do publikacji bez niezależnej weryfikacji — mitygacja tylko promptowa.
-- Brief nie jest zapisywany w DB (brak audytu „skąd Redaktor wziął fakt”); `external_refs` z URL są w treści/draftach, ale bez pełnej listy faktów.
-- Koszt: +1 wywołanie Pro z groundingiem na artykuł (~20–40 s).
-
-## Out of scope
-- F3 (Astro), zmiana R3 na mniej rygorystyczny, zapis briefu w DB, UI do researchu.
+- Fallback SERP (DDG przez ScrapingAnt) jest kruchy i może łamać ToS — tylko awaryjnie; bez `SCRAPINGANT_API_KEY` fallback nie zadziała.
+- DeepSeek wymaga prepaid; przy 402 research cicho przechodzi w fallback, a bez ScrapingAnta — w brak briefu + alert.
+- Wyszukiwanie PL niszowego AgTech może być słabsze niż grounding Gemini → mniej/mniej trafnych faktów; mierzyć `draft_rate`.
+- `SEARCH_PROVIDER=deepseek` jest teraz domyślny — na VPS bez `DEEPSEEK_API_KEY` research zawsze padnie (alert przy każdym artykule).
+- Kwerendy wysyłają tylko tytuł/kategorię (nie treść), ale dystylacja widzi publiczne snippety — brak treści artykułu u providera.
+- Dystylacja używa Flash-Lite; przy słabych wynikach brief może być ubogi (Redaktor napisze ostrożniej).
+- Alert `research fallback` i `run_summary` dzielą rate-limit 1/min — przy błędzie na pierwszym artykule podsumowanie może zostać pominięte.
+- Pola `SEARCH_PROVIDER`/`DEEPSEEK_*` w configu są walidowane, ale serwisy czytają `process.env` bezpośrednio (dwa źródła prawdy).
+- Fakt z briefu jest zaufany: claim może nie odpowiadać treści URL-a (link nie jest halucynowany, ale treść nie jest weryfikowana) — do adresowania w F2-T9.
+- `normalizeFacts` (ścieżka gemini rollback) ma testy; `SEARCH_PROVIDER=gemini` pozostaje opcją awaryjną.
 
 ## Next steps
-- F3-T1: Astro Hybrid + `directus.ts` + strony + cache headers. Po pierwszym pełnym runie z researchem ocenić `draft_rate`.
+- F2-T9: R3 na DeepSeek Search+Fetch + Flash-Lite (fallback SERP), `VERIFY_PROVIDER` do rollbacku.
+- Potem F3-T1 (Astro).

@@ -71,6 +71,41 @@ export const ResearchSchema = z.object({ facts: z.array(ResearchFactSchema) });
 export type ResearchFact = z.infer<typeof ResearchFactSchema>;
 export type ResearchInput = { title: string; text: string; category: Category };
 
+export const DistillFactSchema = z.object({ claim: z.string(), source_index: z.number().int() });
+export const DistillSchema = z.object({ facts: z.array(DistillFactSchema) });
+export type DistillFact = z.infer<typeof DistillFactSchema>;
+
+export interface SearchResultForPrompt {
+  title: string;
+  url: string;
+  summary: string;
+  site_name: string | null;
+  authority: number;
+}
+
+/** Distylacja wyników wyszukiwania do faktów; URL wskazywany przez indeks, nie przez model. */
+export function buildDistillPrompt(results: SearchResultForPrompt[]): string {
+  const list = results
+    .map(
+      (result, index) =>
+        `[${index}] ${result.title}\nURL: ${result.url}\nŹródło: ${result.site_name ?? "?"} (authority ${result.authority})\n${result.summary.slice(0, 800)}`
+    )
+    .join("\n\n");
+
+  return `Na podstawie poniższych wyników wyszukiwania zbierz 5-10 konkretnych, weryfikowalnych faktów przydatnych w artykule AgTech.
+
+WYNIKI:
+${list}
+
+Zasady:
+1. Każdy fakt musi pochodzić z jednego z powyższych wyników.
+2. "source_index" to numer wyniku w nawiasach ([0], [1], ...), z którego wziąłeś fakt. Nie wymyślaj URL-i.
+3. Preferuj liczby, daty, nazwy firm/technologii, regulacje. Pomijaj ogólniki i marketing.
+4. Nie powtarzaj tych samych faktów; maks. 10.
+
+Zwróć JSON: {"facts": [{"claim": "...", "source_index": 0}]}.`;
+}
+
 /** Research przed Redaktorem: zbiera weryfikowalne fakty z siecią (search grounding). */
 export function buildResearchPrompt(input: ResearchInput): string {
   return `Zbierz materiał faktograficzny do artykułu AgTech. Korzystaj z wyszukiwania w sieci.

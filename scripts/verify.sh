@@ -13,7 +13,7 @@ say "0. git add -N (nowe pliki widoczne w diffie)"
 git add -N . >/dev/null 2>&1 || true
 
 say "1. sekrety w diffie kodu (blokujące, bez docs/*.md)"
-if git diff HEAD -- 'packages/**' 'apps/**' ':!*.md' | grep -Ei 'GEMINI_API_KEY=.+|SCRAPINGANT_API_KEY=.+|BEGIN PRIVATE KEY|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.' >/dev/null; then
+if git diff HEAD -- 'packages/**' 'apps/**' ':!*.md' | grep -Ei 'GEMINI_API_KEY=.+|SCRAPINGANT_API_KEY=.+|DEEPSEEK_API_KEY=.+|BEGIN PRIVATE KEY|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.' >/dev/null; then
   fail "sekret w diffie (klucz/JWT)"
 else echo "ok: brak sekretów w diffie"; fi
 if git diff --cached --name-only | grep -E '(^|/)\.env($|\.)|.*\.pem$|.*\.key$|.*\.sqlite$' >/dev/null; then

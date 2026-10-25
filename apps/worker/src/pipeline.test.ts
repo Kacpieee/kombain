@@ -345,13 +345,29 @@ describe("processArticle — ścieżki", () => {
 
   it("błąd researchu nie blokuje artykułu (brief pusty)", async () => {
     const deps = base({
-      research: vi.fn(async () => ({ status: "error" as const, error: "429" })),
+      research: vi.fn(async () => ({ status: "error" as const, error: "402" })),
     });
 
     const result = await processArticle(POOL, CANDIDATE, deps);
 
     expect(result.status).toBe("published");
     expect(deps.synthesize).toHaveBeenCalledWith(expect.objectContaining({ researchBrief: [] }));
+  });
+
+  it("błąd researchu w realnym runie wysyła alert, w dry-run nie", async () => {
+    const notify = vi.fn(async (_text: string) => true);
+    const deps = base({
+      research: vi.fn(async () => ({ status: "error" as const, error: "402 insufficient balance" })),
+      notify,
+    });
+
+    await processArticle(POOL, CANDIDATE, deps);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0]?.[0]).toContain("research fallback");
+
+    notify.mockClear();
+    await processArticle(POOL, CANDIDATE, { ...deps, persist: false });
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("research jest wołany po Bramkarzu, przed Redaktorem", async () => {
