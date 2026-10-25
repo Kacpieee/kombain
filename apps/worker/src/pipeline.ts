@@ -10,6 +10,7 @@ import { classifyArticle, synthesizeArticle } from "./services/llm.js";
 import { processArticleImage } from "./services/media.js";
 import { reviewArticle } from "./services/review.js";
 import { scrapeArticle } from "./services/scraper.js";
+import type { ReviewOutcome } from "./services/review.js";
 import type { EditorOut } from "./prompts.js";
 
 export type ArticleOutcome =
@@ -22,10 +23,20 @@ export type ArticleOutcome =
     }
   | { status: "draft"; articleId: string; slug: string; via: "direct" | "scrapingant" | null; imageVia?: "r2" | "default" }
   | { status: "rejected"; articleId: string | null; via: "direct" | "scrapingant" | null }
-  | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" }
-  | { status: "error"; stage: "scrape" | "gate" | "editor" | "review" | "persist" | "pipeline"; error: string };
+  | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" | "failure_backoff" }
+  | { status: "error"; stage: "scrape" | "gate" | "editor" | "review" | "persist" | "pipeline"; error: string }
+  | {
+      status: "dry_run";
+      wouldBe: "published" | "draft" | "rejected";
+      article?: EditorOut;
+      review?: ReviewOutcome;
+      reason?: string;
+      via: "direct" | "scrapingant" | null;
+    };
 
 export interface PipelineOverrides {
+  /** `false` = dry-run: bez media, bez save/reject (tylko odczyt DB). */
+  persist?: boolean;
   duplicateCheck?: (link: string) => Promise<boolean>;
   scrape?: typeof scrapeArticle;
   history?: typeof fetchHistoricalContext30d;
@@ -63,11 +74,14 @@ export async function processArticle(
   const scraped = await scrape(candidate.sourceUrl);
   const via =
     scraped.status === "error" ? null : scraped.status === "ok" ? scraped.article.fetchedVia : scraped.fetchedVia;
+  const persist = overrides.persist ?? true;
 
   if (scraped.status === "error") {
     return { status: "error", stage: "scrape", error: scraped.error };
   }
   if (scraped.status === "rejected") {
+    if (!persist) return { status: "dry_run", wouldBe: "rejected", reason: scraped.reason, via };
+
     const result = await reject(pool, {
       title: scraped.title || candidate.originalTitle,
       sourceUrl: candidate.sourceUrl,
@@ -91,6 +105,7 @@ export async function processArticle(
   if (gate.status === "rejected") {
     // Duplikat semantyczny = ciche porzucenie (AGENTS §2.8); nieistotny temat = rejected.
     if (gate.decision.is_duplicate) return { status: "dropped", reason: "semantic_duplicate" };
+    if (!persist) return { status: "dry_run", wouldBe: "rejected", reason: gate.reason, via };
 
     const result = await reject(pool, {
       title: scraped.article.title || candidate.originalTitle,
@@ -108,6 +123,10 @@ export async function processArticle(
 
   if (edited.status === "error") {
     // Błąd Redaktora nie może zgubić tematu: zapisujemy draft do ręcznej korekty (AGENTS §2.8).
+    if (!persist) {
+      return { status: "dry_run", wouldBe: "draft", reason: `Błąd Redaktora: ${edited.error}`, via };
+    }
+
     const saved = await save(pool, {
       status: "draft",
       sourceId: candidate.sourceId,
@@ -136,6 +155,10 @@ export async function processArticle(
   });
 
   if (reviewed.status === "draft") {
+    if (!persist) {
+      return { status: "dry_run", wouldBe: "draft", article: reviewed.article, review: reviewed, via };
+    }
+
     const saved = await save(pool, {
       status: "draft",
       sourceId: candidate.sourceId,
@@ -153,6 +176,10 @@ export async function processArticle(
 
     if (saved.status === "draft") return { status: "draft", articleId: saved.articleId, slug: saved.slug, via };
     return persistFailure(saved.status);
+  }
+
+  if (!persist) {
+    return { status: "dry_run", wouldBe: "published", article: reviewed.article, review: reviewed, via };
   }
 
   const image = await media({

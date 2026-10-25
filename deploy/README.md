@@ -284,3 +284,30 @@ Uwagi:
 - `MAX_PUBLISHED_PER_RUN` (max 2) pilnuje kosztów; na pierwszy test `1`.
 - Po limicie run kończy się, a pozostałe linki wrócą w kolejnym runie.
 - Błąd źródła nie wywala runu — trafia do `source_error` w logu.
+
+## 12. CLI workera (testowanie bez publikacji)
+
+Z roota `~/kombain` (albo przez `scripts/worker-run.sh`):
+
+```bash
+# 1. Co mam w env (maskowane, bez wartości sekretów)
+docker compose -f deploy/worker.compose.yml run --rm worker bun src/cli.ts check-env
+
+# 2. Jak wygląda prompt Redaktora dla działu (bez wołania API)
+docker compose -f deploy/worker.compose.yml run --rm worker bun src/cli.ts preview-prompt --kind editor --category "Agroenergetyka"
+
+# 3. Pełny test jednego linku BEZ zapisu do DB (płaci za Gemini)
+docker compose -f deploy/worker.compose.yml run --rm worker bun src/cli.ts run --dry-run --url "https://example.com/artykul"
+
+# 4. Dry-run na źródłach, max 1 artykuł
+docker compose -f deploy/worker.compose.yml run --rm worker bun src/cli.ts run --dry-run --limit 1
+```
+
+Semantyka:
+- `--dry-run` — scrape + Bramkarz + Redaktor + review, **bez** media i bez `saveArticle`/`rejectArticle`; wynik `wouldBe: published|draft|rejected`.
+- `--url` — pojedynczy link, pomija ingestion (najtańszy test). Bez `--dry-run` wykona normalny zapis z `source_id = NULL` (CLI ostrzega).
+- Dry-run **nie podgląda** URL-i już zapisanych w DB — dedup zwróci `dropped/url_duplicate` przed scrapem.
+- `--limit` — 1..2 (limit publikacji; w dry-run limit przetworzonych), `--max-links` 1..15.
+- `--json` — JSONL zamiast linii ludzkich.
+- `preview-prompt --kind gate|editor|r1|r2|r3` — te same buildery co produkcja; nic nie jest wysyłane do Gemini.
+- `check-env` — tylko `set(len=…)`/`not set`, host DB bez hasła.

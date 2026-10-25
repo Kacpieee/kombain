@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 import type { AppConfig } from "./config.js";
-import type { SourceForIngestion } from "./services/ingestion.js";
+import type { SourceForIngestion, RawArticleCandidate } from "./services/ingestion.js";
 import { runOnce } from "./orchestrator.js";
 import type { ArticleOutcome } from "./pipeline.js";
 
@@ -211,5 +211,109 @@ describe("runOnce", () => {
     });
 
     expect(report.image_fallback_used).toBe(1);
+  });
+
+  it("--url: pomija źródła i przetwarza pojedynczy link", async () => {
+    const loadSources = vi.fn(async () => SOURCES);
+    const process = vi.fn(async (_pool: Pool, _candidate: RawArticleCandidate) => published());
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources,
+      url: "https://example.com/jeden",
+      process,
+      log: () => {},
+    });
+
+    expect(loadSources).not.toHaveBeenCalled();
+    expect(process).toHaveBeenCalledTimes(1);
+    expect(process.mock.calls[0]?.[1]).toMatchObject({ sourceUrl: "https://example.com/jeden", sourceId: null });
+    expect(report.links).toBe(1);
+  });
+
+  it("sourceId filtruje źródła przed ingestion", async () => {
+    const ingest = vi.fn(async (source: SourceForIngestion) => ({
+      sourceId: source.id,
+      type: "rss" as const,
+      candidates: [],
+      error: null,
+    }));
+
+    await runOnce(POOL, CONFIG, {
+      loadSources: async () => SOURCES,
+      ingest,
+      process: vi.fn(async () => published()),
+      sourceId: "s2",
+      log: () => {},
+    });
+
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(ingest.mock.calls[0]?.[0]).toMatchObject({ id: "s2" });
+  });
+
+  it("nieznany sourceId → error, bez ingestion", async () => {
+    const ingest = vi.fn(async () => ({ sourceId: "x", type: "rss" as const, candidates: [], error: null }));
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => SOURCES,
+      ingest,
+      process: vi.fn(async () => published()),
+      sourceId: "nie-ma",
+      log: () => {},
+    });
+
+    expect(ingest).not.toHaveBeenCalled();
+    expect(report.errors.join(" ")).toContain("nie-ma");
+  });
+
+  it("maxProcessed zatrzymuje run niezależnie od publikacji", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1"), candidate("s1", "https://x/2"), candidate("s1", "https://x/3")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (): Promise<ArticleOutcome> => ({ status: "draft", articleId: "d", slug: "s", via: "direct" })
+    );
+    const events: Array<Record<string, unknown>> = [];
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      maxProcessed: 2,
+      log: (event) => events.push(event),
+    });
+
+    expect(process).toHaveBeenCalledTimes(2);
+    expect(report.processed).toBe(2);
+    expect(events.some((event) => event.event === "run_processed_limit")).toBe(true);
+  });
+
+  it("dryRun przekazuje persist:false i liczy dry_run", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (_pool: Pool, _candidate: RawArticleCandidate, _options?: { persist?: boolean }): Promise<ArticleOutcome> => ({
+        status: "dry_run",
+        wouldBe: "published",
+        via: "direct",
+      })
+    );
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      dryRun: true,
+      log: () => {},
+    });
+
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false });
+    expect(report.dry_run).toBe(1);
   });
 });

@@ -12,9 +12,11 @@ export interface RunReport {
   finished_at: string;
   sources: number;
   links: number;
+  processed: number;
   published: number;
   rejected: number;
   draft: number;
+  dry_run: number;
   dropped_silent: number;
   errors: string[];
   fallback_used: number;
@@ -28,6 +30,16 @@ export interface OrchestratorDeps {
   process?: typeof processArticle;
   log?: (event: Record<string, unknown>) => void;
   now?: () => Date;
+  /** Tryb testowy: pipeline bez media/save/reject. */
+  dryRun?: boolean;
+  /** Tylko jedno źródło (diagnostyka). */
+  sourceId?: string;
+  /** Pojedynczy URL z pominięciem ingestion. */
+  url?: string;
+  /** Override limitu linków na źródło (cap 15). */
+  maxLinks?: number;
+  /** Twardy limit przetworzonych linków w runie (ochrona kosztów). */
+  maxProcessed?: number;
 }
 
 /**
@@ -47,9 +59,11 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     finished_at: startedAt,
     sources: 0,
     links: 0,
+    processed: 0,
     published: 0,
     rejected: 0,
     draft: 0,
+    dry_run: 0,
     dropped_silent: 0,
     errors: [],
     fallback_used: 0,
@@ -57,15 +71,26 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     source_errors: 0,
   };
 
-  const sources = await loadSources(pool);
+  if (deps.url) {
+    const candidates = [{ sourceId: null, originalTitle: deps.url, sourceUrl: deps.url }];
+    report.links = 1;
+    return processCandidates(pool, config, candidates, report, deps, log);
+  }
+
+  const allSources = await loadSources(pool);
+  const sources = deps.sourceId ? allSources.filter((source) => source.id === deps.sourceId) : allSources;
   report.sources = sources.length;
+  if (deps.sourceId && sources.length === 0) {
+    report.errors.push(`persist: nie znaleziono źródła ${deps.sourceId}`);
+  }
 
   const limit = pLimit(config.FETCH_CONCURRENCY);
+  const maxLinks = deps.maxLinks ?? config.MAX_LINKS_PER_SOURCE;
   const perSource = await Promise.all(
     sources.map((source) =>
       limit(async () => {
         try {
-          const result = await ingest(source, { maxLinks: config.MAX_LINKS_PER_SOURCE });
+          const result = await ingest(source, { maxLinks });
           if (result.error) {
             report.source_errors += 1;
             log({ event: "source_error", sourceId: source.id, name: source.name, error: result.error });
@@ -99,36 +124,56 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     }
   }
   report.links = candidates.length;
+  return processCandidates(pool, config, candidates, report, deps, log);
 
-  for (let index = 0; index < candidates.length; index++) {
-    const candidate = candidates[index]!;
-    if (report.published >= config.MAX_PUBLISHED_PER_RUN) {
-      log({ event: "run_limit_reached", published: report.published, remaining: candidates.length - index });
-      break;
-    }
+  function processCandidates(
+    db: Pool,
+    cfg: AppConfig,
+    list: RawArticleCandidate[],
+    out: RunReport,
+    options: OrchestratorDeps,
+    emit: (event: Record<string, unknown>) => void
+  ): Promise<RunReport> {
+    return (async () => {
+      for (let index = 0; index < list.length; index++) {
+        const candidate = list[index]!;
 
-    let outcome: ArticleOutcome;
-    try {
-      outcome = await process(pool, candidate);
-    } catch (error) {
-      outcome = {
-        status: "error",
-        stage: "pipeline",
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+        if (out.published >= cfg.MAX_PUBLISHED_PER_RUN) {
+          emit({ event: "run_limit_reached", published: out.published, remaining: list.length - index });
+          break;
+        }
+        if (options.maxProcessed !== undefined && out.processed >= options.maxProcessed) {
+          emit({ event: "run_processed_limit", processed: out.processed, remaining: list.length - index });
+          break;
+        }
 
-    countOutcome(report, outcome);
-    if (outcome.status === "dropped") {
-      log({ event: "dropped", reason: outcome.reason, sourceUrl: candidate.sourceUrl });
-    } else {
-      log({ event: "article", sourceUrl: candidate.sourceUrl, ...outcome });
-    }
+        let outcome: ArticleOutcome;
+        try {
+          outcome = await process(db, candidate, options.dryRun ? { persist: false } : undefined);
+        } catch (error) {
+          outcome = {
+            status: "error",
+            stage: "pipeline",
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+
+        out.processed += 1;
+        countOutcome(out, outcome);
+        if (outcome.status === "dry_run") {
+          emit({ event: "dry_run", wouldBe: outcome.wouldBe, sourceUrl: candidate.sourceUrl, reason: outcome.reason });
+        } else if (outcome.status === "dropped") {
+          emit({ event: "dropped", reason: outcome.reason, sourceUrl: candidate.sourceUrl });
+        } else {
+          emit({ event: "article", sourceUrl: candidate.sourceUrl, ...outcome });
+        }
+      }
+
+      out.finished_at = (options.now ?? (() => new Date()))().toISOString();
+      emit({ event: "run_summary", ...out });
+      return out;
+    })();
   }
-
-  report.finished_at = now().toISOString();
-  log({ event: "run_summary", ...report });
-  return report;
 }
 
 function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
@@ -151,6 +196,10 @@ function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
       break;
     case "error":
       report.errors.push(`${outcome.stage}: ${outcome.error}`);
+      break;
+    case "dry_run":
+      report.dry_run += 1;
+      if (outcome.via === "scrapingant") report.fallback_used += 1;
       break;
   }
 }

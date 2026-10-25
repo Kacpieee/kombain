@@ -5,6 +5,7 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 
 ## TERAZ
 
+- [ ] F2-T7b obserwowalność: Telegram + healthchecks, timeout runu, `MAX_PROCESSED_PER_RUN`, tabela `article_failures` (backoff 3 próby/7 dni) — [CRITICAL]
 - [ ] F3-T1 `apps/web` Astro Hybrid + `directus.ts` + strony `/`, `/kategoria/[slug]`, `/artykul/[slug]` + Cache headers — [SAFE]
 
 ## KIEDYŚ

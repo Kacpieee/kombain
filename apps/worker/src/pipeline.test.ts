@@ -233,4 +233,95 @@ describe("processArticle — ścieżki", () => {
     expect(retried).toBe(1);
     expect(deps.synthesize).toHaveBeenCalledTimes(2);
   });
+
+  it("dry-run: published bez media i bez zapisu", async () => {
+    const deps = base({ persist: false });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "dry_run", wouldBe: "published" });
+    expect(deps.media).not.toHaveBeenCalled();
+    expect(deps.save).not.toHaveBeenCalled();
+    expect(deps.reject).not.toHaveBeenCalled();
+  });
+
+  it("dry-run: review=draft bez zapisu", async () => {
+    const deps = base({
+      persist: false,
+      review: vi.fn(async () => ({
+        status: "draft" as const,
+        needsHumanCheck: true,
+        stage: "R3" as const,
+        issues: ["uncertain"],
+        cleanedHtml: ARTICLE.content_html,
+        removedInferences: [],
+        external: [],
+        article: ARTICLE,
+      })),
+    });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "dry_run", wouldBe: "draft" });
+    expect(deps.save).not.toHaveBeenCalled();
+  });
+
+  it("dry-run: scrape < 800 nie tworzy rejected w DB", async () => {
+    const deps = base({
+      persist: false,
+      scrape: vi.fn(async (): Promise<ScrapeOutcome> => ({
+        status: "rejected",
+        sourceUrl: CANDIDATE.sourceUrl,
+        title: "Krótki",
+        reason: "Tekst zbyt krótki (<800 znaków)",
+        charCount: 100,
+        text: "krótki",
+        fetchedVia: "direct",
+      })),
+    });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "dry_run", wouldBe: "rejected" });
+    expect(deps.reject).not.toHaveBeenCalled();
+  });
+
+  it("dry-run: błąd Redaktora → wouldBe draft bez zapisu", async () => {
+    const deps = base({
+      persist: false,
+      synthesize: vi.fn(async (): Promise<EditorOutcome> => ({ status: "error", error: "timeout" })),
+    });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "dry_run", wouldBe: "draft" });
+    expect(deps.save).not.toHaveBeenCalled();
+  });
+
+  it("dry-run: Bramkarz odrzuca temat bez zapisu rejected", async () => {
+    const deps = base({
+      persist: false,
+      classify: vi.fn(
+        async (): Promise<GatekeeperOutcome> => ({
+          status: "rejected",
+          reason: "Ceny płodów rolnych",
+          decision: { is_duplicate: false, is_relevant: false, reason: "Ceny płodów rolnych", category: "Agroenergetyka" },
+        })
+      ),
+    });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "dry_run", wouldBe: "rejected", reason: "Ceny płodów rolnych" });
+    expect(deps.reject).not.toHaveBeenCalled();
+    expect(deps.save).not.toHaveBeenCalled();
+    expect(deps.media).not.toHaveBeenCalled();
+  });
+
+  it("dry-run: błąd Bramkarza → error bez zapisu", async () => {
+    const deps = base({
+      persist: false,
+      classify: vi.fn(async (): Promise<GatekeeperOutcome> => ({ status: "error", error: "429" })),
+    });
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({ status: "error", stage: "gate" });
+    expect(deps.save).not.toHaveBeenCalled();
+    expect(deps.reject).not.toHaveBeenCalled();
+  });
 });

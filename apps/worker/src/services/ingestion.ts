@@ -19,7 +19,7 @@ export interface SourceForIngestion {
 }
 
 export interface RawArticleCandidate {
-  sourceId: string;
+  sourceId: string | null;
   originalTitle: string;
   sourceUrl: string;
 }

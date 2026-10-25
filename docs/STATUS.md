@@ -11,8 +11,11 @@
 - F2-T5: `media.ts` + `persist` — sharp 1200×675 webp80 → R2, fallback default kategorii; transakcja z savepointem, slug + suffix, tag sync, stany `published`/`draft`/`rejected`/`dropped`/`blocked`; 30 testów PG + 8 media
 - F2-T6: `orchestrator + pipeline + index + config` — dedupe run-level, `p-limit(5)`, stop po `MAX_PUBLISHED_PER_RUN=2`, log JSONL (w tym ciche porzucenia), liczniki `fallback_used`/`image_fallback_used`/`source_errors`; Dockerfile + `deploy/worker.compose.yml` + cron z `flock`; 25 testów (pipeline 12 + orchestrator 9 + config 4)
 
+- F2-T7a: CLI workera — `run --dry-run` (bez media/save/reject, `wouldBe`), `--url` (pojedynczy link), `--limit/--max-links/--source-id`, `preview-prompt` (gate/editor/r1/r2/r3 z tych samych builderów), `check-env` (maskowane); `scripts/worker-run.sh`; 18 testów CLI
+
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
-- F3-T1 `apps/web` Astro Hybrid + strony
+- F2-T7b obserwowalność (Telegram + healthchecks + timeout + `article_failures`)
+- F3-T1 Astro
