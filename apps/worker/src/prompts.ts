@@ -140,7 +140,7 @@ WYTYCZNE METADANYCH:
 3. 'tldr': dokładnie 3-5 krótkich wniosków technicznych (tablica stringów).
 4. 'tags': maks. 4 tagi, małymi literami.
 5. 'tech_summary': obiekt z kluczami "podmiot", "technologia", "cel_wdrozenia".
-6. 'external_refs': fakty spoza tekstu źródłowego (liczby, daty, nazwy firm, regulacje) jako tablica {claim, type, source}; type = "external" dla twierdzeń spoza źródła, "supported" dla wprost popartych źródłem. Nie wymyślaj źródeł.
+6. 'external_refs': **tylko weryfikowalne** fakty spoza tekstu źródłowego — konkretna liczba, data, nazwa firmy/osoby, regulacja albo badanie z nazwą i rokiem. Nie umieszczaj tu ogólnych twierdzeń przyczynowych, ocen ani przewidywań („przestój oznacza kary umowne") — te należą do treści jako opinia i nie są weryfikowane w sieci. Format: {claim, type, source}, gdzie type = "external" tylko dla faktów spoza źródła, "supported" gdy źródło wprost je potwierdza. Nie wymyślaj źródeł.
 
 Nie dodawaj linku "Źródło:" ani URL-i — kod dokleja je deterministycznie z source_url.
 Zwróć wyłącznie JSON z kluczami: title, content_html, tldr, tags, tech_summary, slug, external_refs.`;
@@ -177,8 +177,8 @@ ${sourceText}
 Dla każdego atomu (tylko twierdzenia faktograficzne i opinie, nie każde zdanie) wskaż:
 - "text" — **DOSŁOWNY fragment artykułu skopiowany znak w znak** (bez parafrazy, bez zmiany kolejności słów, bez skracania w środku zdania). **Bez tagów HTML** — tylko widoczny tekst; jeśli w zdaniu są <strong>/<em>, pomiń znaczniki, zachowaj słowa.
 - "supported" — wprost wynika z tekstu źródłowego (evidence: krótki cytat ze źródła),
-- "external" — fakt spoza źródła (liczba, data, nazwa, regulacja), wymagający weryfikacji w sieci,
-- "inference" — wniosek/opinia autora bez dowodu (evidence puste).
+- "external" — **weryfikowalny** fakt spoza źródła: konkretna liczba, data, nazwa firmy/osoby/technologii, regulacja lub badanie. NIE oznaczaj jako external ogólnych twierdzeń przyczynowych, ocen, przewidywań ani skutków biznesowych („przestój oznacza kary umowne") — to jest inference.
+- "inference" — wniosek/opinia/przewidywanie autora bez dowodu (evidence puste).
 
 Zasady zgłaszania: maks. 20 atomów typu supported/external (priorytet: external, potem supported). Atomy typu inference zgłaszaj **zawsze**, nawet jeśli limit został wyczerpany — muszą być wycięte z artykułu przed publikacją.
 Zwróć JSON: {"atoms": [{"text": "...", "type": "supported|external|inference", "evidence": "..."}]}.`;

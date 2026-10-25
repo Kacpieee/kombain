@@ -68,3 +68,7 @@ Fuzzy dopasowanie zdań: próg Jaccard **0.75**, iteracyjne usuwanie wszystkich 
 ### Hotfix 4 (cytaty R2 + inline tagi)
 
 Prompt R2 wymaga dosłownego cytatu bez tagów HTML; `inference` zawsze zgłaszane (poza limitem 20). Matcher dostał `removeByVisibleText` (dopasowanie po `textContent` bloku, ochrona atomów supported/external), więc zdania ze `<strong>/<em>` też są wycinane. 3 rundy Reviewera (m.in. pozorny fix promptu), końcowo Approve. Ryzyka: mieszane wystąpienia (exact + inline) mogą zostawić jedno; exact-path bez ochrony supported.
+
+### Hotfix 5 (external_refs / R2 external)
+
+`external_refs` Redaktora i `external` w R2 zawężone do faktów weryfikowalnych (liczba/data/nazwa/regulacja/badanie z nazwą i rokiem); ogólne twierdzenia przyczynowe i oceny → `inference`. Przywrócona semantyka `type` (external vs supported) i zakaz wymyślania źródeł. 3 rundy Reviewera, Approve.

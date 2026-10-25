@@ -58,6 +58,7 @@ describe("buildR2Prompt", () => {
     expect(prompt).toContain("Bez tagów HTML");
     expect(prompt).toContain("maks. 20");
     expect(prompt).toContain("Atomy typu inference zgłaszaj");
+    expect(prompt).toContain("NIE oznaczaj jako external ogólnych twierdzeń przyczynowych");
   });
 });
 
@@ -70,6 +71,7 @@ describe("buildEditorPrompt", () => {
     expect(prompt).not.toMatch(/pocketbase/i);
     expect(prompt).not.toContain("[WPISZ");
     expect(prompt).toContain('Nie dodawaj linku "Źródło:"');
+    expect(prompt).toContain("Nie umieszczaj tu ogólnych twierdzeń przyczynowych");
   });
 
   it("każdy z 6 działów dostaje własną personę", () => {
