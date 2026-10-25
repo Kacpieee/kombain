@@ -30,6 +30,9 @@ export interface RunReport {
   verify_uncertain: number;
   verify_serp_used: number;
   verify_fetches: number;
+  repair_attempts: number;
+  repair_success: number;
+  repair_failed: number;
 }
 
 export interface OrchestratorDeps {
@@ -89,6 +92,9 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
     verify_uncertain: 0,
     verify_serp_used: 0,
     verify_fetches: 0,
+    repair_attempts: 0,
+    repair_success: 0,
+    repair_failed: 0,
   };
 
   if (!deps.dryRun && deps.healthcheck) {
@@ -204,9 +210,14 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
             ? {
                 persist: false,
                 verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS,
+                maxRepairAttempts: cfg.REPAIR_MAX_ATTEMPTS,
                 ...(options.url ? { skipDuplicateCheck: true } : {}),
               }
-            : { notify: options.notify, verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS };
+            : {
+                notify: options.notify,
+                verifyMaxAtoms: cfg.VERIFY_MAX_ATOMS,
+                maxRepairAttempts: cfg.REPAIR_MAX_ATTEMPTS,
+              };
 
           outcome = await process(db, candidate, pipelineOptions);
         } catch (error) {
@@ -249,6 +260,8 @@ export async function runOnce(pool: Pool, config: AppConfig, deps: OrchestratorD
             stage: outcome.review?.stage ?? null,
             needsHumanCheck: outcome.review?.needsHumanCheck ?? false,
             issues: outcome.review?.issues ?? [],
+            repairAttempts: outcome.review?.repairAttempts ?? 0,
+            repairedClaims: outcome.review?.repairedClaims ?? [],
           });
         } else if (outcome.status === "dropped") {
           emit({ event: "dropped", reason: outcome.reason, sourceUrl: candidate.sourceUrl });
@@ -282,6 +295,19 @@ function countVerify(report: RunReport, verify: VerifyStats | undefined): void {
   report.verify_fetches += verify.fetches;
 }
 
+function countRepair(
+  report: RunReport,
+  attempts: number | undefined,
+  repaired: boolean | undefined,
+  published: boolean
+): void {
+  const count = attempts ?? 0;
+  report.repair_attempts += count;
+  if (count === 0) return;
+  if (repaired && published) report.repair_success += 1;
+  else report.repair_failed += 1;
+}
+
 function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
   switch (outcome.status) {
     case "published":
@@ -289,11 +315,13 @@ function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
       if (outcome.via === "scrapingant") report.fallback_used += 1;
       if (outcome.imageVia === "default") report.image_fallback_used += 1;
       countVerify(report, outcome.verify);
+      countRepair(report, outcome.repairAttempts, outcome.repaired, true);
       break;
     case "draft":
       report.draft += 1;
       if (outcome.via === "scrapingant") report.fallback_used += 1;
       countVerify(report, outcome.verify);
+      countRepair(report, outcome.repairAttempts, outcome.repaired, false);
       break;
     case "rejected":
       report.rejected += 1;
@@ -309,6 +337,12 @@ function countOutcome(report: RunReport, outcome: ArticleOutcome): void {
       report.dry_run += 1;
       if (outcome.via === "scrapingant") report.fallback_used += 1;
       countVerify(report, outcome.review?.verify);
+      countRepair(
+        report,
+        outcome.review?.repairAttempts,
+        outcome.review?.repaired,
+        outcome.wouldBe === "published"
+      );
       break;
   }
 }

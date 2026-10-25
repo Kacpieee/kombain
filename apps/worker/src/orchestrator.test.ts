@@ -17,6 +17,7 @@ const CONFIG: AppConfig = {
   SEARCH_PROVIDER: "deepseek",
   VERIFY_PROVIDER: "deepseek",
   VERIFY_MAX_ATOMS: 8,
+  REPAIR_MAX_ATTEMPTS: 1,
   MAX_PUBLISHED_PER_RUN: 2,
   MAX_LINKS_PER_SOURCE: 15,
   MAX_PROCESSED_PER_RUN: 10,
@@ -328,7 +329,7 @@ describe("runOnce", () => {
       log: (event) => events.push(event),
     });
 
-    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS, maxRepairAttempts: CONFIG.REPAIR_MAX_ATTEMPTS });
     expect(report.dry_run).toBe(1);
   });
 
@@ -509,6 +510,120 @@ describe("runOnce", () => {
     });
   });
 
+  it("liczy repair_* dla published i draft", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1"), candidate("s1", "https://x/2")],
+      error: null,
+    }));
+    let call = 0;
+    const process = vi.fn(async (): Promise<ArticleOutcome> => {
+      call += 1;
+      if (call === 1) {
+        return {
+          status: "published",
+          articleId: "a1",
+          slug: "s1",
+          via: "direct",
+          imageVia: "r2",
+          repairAttempts: 1,
+          repaired: true,
+        };
+      }
+      return {
+        status: "draft",
+        articleId: "a2",
+        slug: "s2",
+        via: "direct",
+        repairAttempts: 1,
+        repaired: true,
+      };
+    });
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      getFailure: async () => null,
+      recordFailure: async () => {},
+      clearFailure: async () => {},
+      notify: async () => true,
+      healthcheck: async () => true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      repair_attempts: 2,
+      repair_success: 1,
+      repair_failed: 1,
+    });
+  });
+
+  it("dry_run liczy repair_success z review", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (): Promise<ArticleOutcome> =>
+        ({
+          status: "dry_run",
+          wouldBe: "published",
+          via: "direct",
+          review: { repairAttempts: 1, repaired: true },
+        }) as unknown as ArticleOutcome
+    );
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      dryRun: true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      repair_attempts: 1,
+      repair_success: 1,
+      repair_failed: 0,
+    });
+  });
+
+  it("dry_run wouldBe=draft z repaired=true liczy repair_failed", async () => {
+    const ingest = vi.fn(async () => ({
+      sourceId: "s1",
+      type: "rss" as const,
+      candidates: [candidate("s1", "https://x/1")],
+      error: null,
+    }));
+    const process = vi.fn(
+      async (): Promise<ArticleOutcome> =>
+        ({
+          status: "dry_run",
+          wouldBe: "draft",
+          via: "direct",
+          review: { repairAttempts: 1, repaired: true },
+        }) as unknown as ArticleOutcome
+    );
+
+    const report = await runOnce(POOL, CONFIG, {
+      loadSources: async () => [SOURCES[0]!],
+      ingest,
+      process,
+      dryRun: true,
+      log: () => {},
+    });
+
+    expect(report).toMatchObject({
+      repair_attempts: 1,
+      repair_success: 0,
+      repair_failed: 1,
+    });
+  });
+
   it("realny run przekazuje notify do pipeline, dry-run tylko persist:false", async () => {
     const ingest = vi.fn(async () => ({
       sourceId: "s1",
@@ -534,11 +649,11 @@ describe("runOnce", () => {
     };
 
     await runOnce(POOL, CONFIG, infra);
-    expect(process.mock.calls[0]?.[2]).toEqual({ notify, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
+    expect(process.mock.calls[0]?.[2]).toEqual({ notify, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS, maxRepairAttempts: CONFIG.REPAIR_MAX_ATTEMPTS });
 
     process.mockClear();
     await runOnce(POOL, CONFIG, { ...infra, dryRun: true });
-    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS });
+    expect(process.mock.calls[0]?.[2]).toEqual({ persist: false, verifyMaxAtoms: CONFIG.VERIFY_MAX_ATOMS, maxRepairAttempts: CONFIG.REPAIR_MAX_ATTEMPTS });
   });
 
   it("backoff: link po 3 próbach jest pomijany bez pipeline", async () => {

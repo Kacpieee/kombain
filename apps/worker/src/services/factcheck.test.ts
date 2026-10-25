@@ -138,6 +138,15 @@ describe("buildClaimQuery / isRelevantEvidence", () => {
       extractClaimEntities("POLSKA eksportuje zboże.", { includeSentenceStart: true }).proper
     ).toContain("POLSKA");
   });
+
+  it("spójnik inicjalny nie jest encją, ale nazwa po nim tak", () => {
+    const entities = extractClaimEntities("Dodatkowo Kanada importuje zboże.", {
+      includeSentenceStart: true,
+    });
+
+    expect(entities.proper).not.toContain("Dodatkowo");
+    expect(entities.proper).toContain("Kanada");
+  });
 });
 
 describe("verifyExternalAtoms — relevance gate i statystyki", () => {

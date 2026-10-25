@@ -250,13 +250,40 @@ describe("processArticle — ścieżki", () => {
     expect(deps.save).toHaveBeenCalled();
   });
 
-  it("przekazuje verifyMaxAtoms do review", async () => {
+  it("przekazuje verifyMaxAtoms i maxRepairAttempts do review", async () => {
     const reviewSpy = vi.fn(base().review!);
-    const deps = base({ review: reviewSpy, verifyMaxAtoms: 3 });
+    const deps = base({ review: reviewSpy, verifyMaxAtoms: 3, maxRepairAttempts: 1 });
 
     await processArticle(POOL, CANDIDATE, deps);
 
-    expect(reviewSpy.mock.calls[0]?.[2]).toMatchObject({ verifyMaxAtoms: 3 });
+    expect(reviewSpy.mock.calls[0]?.[2]).toMatchObject({ verifyMaxAtoms: 3, maxRepairAttempts: 1 });
+  });
+
+  it("przenosi repairAttempts/repaired/repairedClaims do wyniku", async () => {
+    const deps = base({
+      review: vi.fn(async () => ({
+        status: "published" as const,
+        needsHumanCheck: false,
+        stage: null,
+        issues: [],
+        cleanedHtml: ARTICLE.content_html,
+        removedInferences: [],
+        external: [],
+        repairAttempts: 1,
+        repaired: true,
+        repairedClaims: ["Firma X ma 40% rynku."],
+        article: ARTICLE,
+      })),
+    });
+
+    const result = await processArticle(POOL, CANDIDATE, deps);
+
+    expect(result).toMatchObject({
+      status: "published",
+      repairAttempts: 1,
+      repaired: true,
+      repairedClaims: ["Firma X ma 40% rynku."],
+    });
   });
 
   it("przenosi statystyki verify z review do wyniku", async () => {

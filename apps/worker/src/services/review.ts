@@ -5,9 +5,10 @@ import {
   buildR1Prompt,
   buildR2Prompt,
 } from "../prompts.js";
-import type { EditorOut, R1Decision, R2Atom, RepairIssue, ResearchFact } from "../prompts.js";
+import type { EditorFeedback, EditorOut, R1Decision, R2Atom, RepairIssue, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
 import type { FactcheckOutcome, VerifyReason, VerifyStats } from "./factcheck.js";
+import { extractClaimEntities, isAcronym, significantWords, stem } from "./search/query.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
 import type { GenerateFn } from "./llm.js";
 import { parseSynthesisJson } from "./ingestion.js";
@@ -59,6 +60,12 @@ export interface ReviewDeps {
   verifyExternal?: (atoms: R2Atom[]) => Promise<FactcheckOutcome>;
   /** Limit atomów R3 z AppConfig (jedno źródło prawdy). */
   verifyMaxAtoms?: number;
+  /** Naprawa Redaktora po R2/R3; brak = repair wyłączony. */
+  repair?: (feedback: EditorFeedback) => Promise<EditorOut>;
+  /** Limit przebiegów repair z AppConfig (0 wyłącza). */
+  maxRepairAttempts?: number;
+  /** Próg minimalnej długości po repair (testy mogą obniżyć). */
+  minRepairedChars?: number;
 }
 
 export interface ReviewOutcome {
@@ -71,6 +78,9 @@ export interface ReviewOutcome {
   removedInferences: string[];
   external: ExternalVerdict[];
   verify?: VerifyStats;
+  repairAttempts?: number;
+  repaired?: boolean;
+  repairedClaims?: string[];
   article: EditorOut;
 }
 
@@ -253,15 +263,106 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-/** Atom pokryty faktem z researchu — tylko gdy atom zawiera się w fakcie (bez dodatkowych treści). */
-function coveredByResearch(claim: string, facts: ResearchFact[]): boolean {
+/** Atom pokryty faktem z researchu — exact albo 75% rdzeni + wszystkie encje pokryte fact/source. */
+export function coveredByResearch(claim: string, facts: ResearchFact[], sourceText = ""): boolean {
   const normalized = normalizeText(claim);
   if (normalized.length < 10) return false;
 
   return facts.some((fact) => {
     const factText = normalizeText(fact.claim);
-    return factText.length > 0 && factText.includes(normalized);
+    if (!factText) return false;
+    if (factText.includes(normalized)) return true;
+    if (!entitiesCovered(claim, fact.claim, sourceText)) return false;
+
+    const claimStems = new Set(significantWords(claim).map(stem));
+    const factStems = new Set(significantWords(fact.claim).map(stem));
+    if (factStems.size === 0) return false;
+
+    let shared = 0;
+    for (const word of factStems) if (claimStems.has(word)) shared += 1;
+    return shared / factStems.size >= 0.75;
   });
+}
+
+function entitiesCovered(claim: string, factClaim: string, sourceText: string): boolean {
+  const entities = extractClaimEntities(claim, { includeSentenceStart: true });
+  const haystacks = [normalizeText(factClaim), normalizeText(sourceText)];
+
+  for (const entity of [...entities.quoted, ...entities.numeric, ...entities.proper]) {
+    const needle = normalizeText(entity);
+    if (needle && !haystacks.some((haystack) => haystack.includes(needle))) return false;
+  }
+  return true;
+}
+
+/** Widoczny tekst HTML (bloki rozdzielone spacją) do guardów długości i encji. */
+function visibleText(html: string): string {
+  const { document } = parseHTML(`<div id="__visible">${html}</div>`);
+  const root = document.getElementById("__visible");
+  if (!root) return "";
+  const blocks = [...root.querySelectorAll("p, li, h2, h3")]
+    .map((block) => (block.textContent ?? "").trim())
+    .filter(Boolean);
+  if (blocks.length > 0) return blocks.join("\n").trim();
+  return (root.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+const COMMON_TITLE_WORDS = new Set([
+  "wstęp",
+  "nowy",
+  "stary",
+  "rynek",
+  "wzrost",
+  "spadek",
+  "raport",
+  "dane",
+  "firma",
+  "system",
+  "technologia",
+  "produkcja",
+  "koszty",
+  "zysk",
+  "rolnicy",
+]);
+
+function entityKeys(text: string): string[] {
+  const entities = extractClaimEntities(text, { includeSentenceStart: true });
+  return [...entities.quoted, ...entities.numeric, ...entities.proper]
+    .map((entity) => normalizeText(entity))
+    .filter((entity) => entity.length > 0 && !COMMON_TITLE_WORDS.has(entity));
+}
+
+/**
+ * Encje do guardu repair: pojedynczy wyraz na początku zdania (np. „Kolejny”) nie jest
+ * traktowany jako nowa nazwa własna — R3 i tak zweryfikuje treść. Nazwy wielowyrazowe,
+ * akronimy i liczby nadal blokują.
+ */
+function guardEntityKeys(text: string): string[] {
+  const entities = extractClaimEntities(text, { includeSentenceStart: true });
+  const proper = new Set(entities.proper.map((entity) => entity.toLowerCase()));
+  const keys = [...entities.quoted, ...entities.numeric].map((entity) => normalizeText(entity));
+
+  for (const match of text.matchAll(/\b[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/gu)) {
+    const value = match[0];
+    if (!proper.has(value.toLowerCase()) || COMMON_TITLE_WORDS.has(normalizeText(value))) continue;
+
+    const before = text.slice(0, match.index ?? 0);
+    const sentenceStart = (match.index ?? 0) === 0 || /[.!?]\s*$|\n\s*$/.test(before);
+    if (sentenceStart && !isAcronym(value)) {
+      const after = text.slice((match.index ?? 0) + value.length);
+      const multiword = /^\s+[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/u.test(after);
+      if (!multiword) continue;
+    }
+
+    keys.push(normalizeText(value));
+  }
+
+  return keys.filter(Boolean);
+}
+
+function newEntities(repairedText: string, allowedTexts: string[]): string[] {
+  const allowed = new Set(allowedTexts.flatMap(entityKeys));
+  return [...new Set(guardEntityKeys(repairedText))].filter((entity) => !allowed.has(entity));
 }
 
 /**
@@ -325,11 +426,115 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** R1 → R2 → R3. `refuted` i błędy → draft; `uncertain` → draft + needs_human_check. */
+/** R1 → R2 → R3 + bounded repair. `refuted`/`uncertain` po nieudanej naprawie → draft. */
 export async function reviewArticle(
   articleIn: EditorOut,
   sourceText: string,
   deps: ReviewDeps = {}
+): Promise<ReviewOutcome> {
+  const maxAttempts = Math.max(0, deps.maxRepairAttempts ?? 0);
+  let article = articleIn;
+  let repairAttempts = 0;
+  let repaired = false;
+  let repairedClaims: string[] = [];
+  let verify: VerifyStats | undefined;
+  let last: ReviewOutcome | undefined;
+
+  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+    last = await reviewOnce(article, sourceText, deps, attempt === 0);
+    verify = mergeVerifyStats(verify, last.verify);
+    if (last.status === "published") {
+      return withRepair(last, repairAttempts, repaired, repairedClaims, verify);
+    }
+    if (!deps.repair || attempt >= maxAttempts || !canRepair(last)) break;
+
+    const feedback: EditorFeedback = {
+      previousArticle: last.article,
+      issues: last.repairIssues ?? [],
+    };
+
+    repairAttempts += 1;
+    repairedClaims = [...new Set([...repairedClaims, ...feedback.issues.map((issue) => issue.claim)])];
+
+    let repairedArticle: EditorOut;
+    try {
+      repairedArticle = await deps.repair(feedback);
+    } catch {
+      break;
+    }
+
+    const repairedHtml = sanitizeEditorHtml(repairedArticle.content_html);
+    const repairedSynced = { ...repairedArticle, content_html: repairedHtml };
+    const preLength = visibleText(last.cleanedHtml).length;
+    const postLength = visibleText(repairedHtml).length;
+    const minLength =
+      preLength >= 600
+        ? (deps.minRepairedChars ?? 600)
+        : (deps.minRepairedChars ?? Math.floor(preLength * 0.6));
+
+    if (postLength < minLength) {
+      return withRepair(
+        draft(
+          last.stage ?? "R3",
+          [...last.issues, `Artykuł po naprawie zbyt krótki (${postLength} < ${minLength})`],
+          repairedSynced,
+          repairedHtml,
+          {
+            needsHumanCheck: true,
+            removedInferences: last.removedInferences,
+            external: last.external,
+            repairIssues: last.repairIssues,
+          }
+        ),
+        repairAttempts,
+        false,
+        repairedClaims,
+        verify
+      );
+    }
+
+    const allowedTexts = [
+      visibleText(last.article.content_html),
+      sourceText,
+      ...(deps.researchBrief ?? []).map((fact) => fact.claim),
+    ];
+    const added = newEntities(visibleText(repairedHtml), allowedTexts);
+    if (added.length > 0) {
+      return withRepair(
+        draft(
+          last.stage ?? "R3",
+          [
+            ...last.issues,
+            `Repair wprowadził nowe fakty/encje spoza źródła: ${added.slice(0, 3).join(", ")}`,
+          ],
+          repairedSynced,
+          repairedHtml,
+          {
+            needsHumanCheck: true,
+            removedInferences: last.removedInferences,
+            external: last.external,
+            repairIssues: last.repairIssues,
+          }
+        ),
+        repairAttempts,
+        false,
+        repairedClaims,
+        verify
+      );
+    }
+
+    article = repairedSynced;
+    repaired = true;
+  }
+
+  return withRepair(last ?? (await reviewOnce(article, sourceText, deps, false)), repairAttempts, repaired, repairedClaims, verify);
+}
+
+async function reviewOnce(
+  articleIn: EditorOut,
+  sourceText: string,
+  deps: ReviewDeps,
+  allowR1Retry: boolean
 ): Promise<ReviewOutcome> {
   const generate = deps.generate ?? createGenerator();
   const model = deps.model ?? process.env.GEMINI_PRO_MODEL ?? DEFAULT_EDITOR_MODEL;
@@ -359,7 +564,7 @@ export async function reviewArticle(
   // R1: lokalny meta-check + LLM. Dokładnie jeden retry Redaktora (AGENTS §2.7).
   const local = validateTechnical(article);
   if (!local.pass) {
-    if (!deps.regenerate) return draft("R1", local.issues, article, cleanedHtml);
+    if (!deps.regenerate || !allowR1Retry) return draft("R1", local.issues, article, cleanedHtml);
 
     retried = true;
     const regenerated = await runRegenerate(deps.regenerate, local.issues, article);
@@ -373,7 +578,7 @@ export async function reviewArticle(
   }
 
   let r1 = await safeR1(runR1, article);
-  if (!r1.pass && deps.regenerate && !retried) {
+  if (!r1.pass && deps.regenerate && allowR1Retry && !retried) {
     retried = true;
     const regenerated = await runRegenerate(deps.regenerate, r1.issues, article);
     if (!regenerated.ok) return draft("R1", [regenerated.error], article, cleanedHtml);
@@ -431,7 +636,7 @@ export async function reviewArticle(
   }
 
   const externalAtoms = mergeExternalAtoms(atoms, article.external_refs).filter(
-    (atom) => !coveredByResearch(atom.text, deps.researchBrief ?? [])
+    (atom) => !coveredByResearch(atom.text, deps.researchBrief ?? [], sourceText)
   );
   let external: ExternalVerdict[] = [];
   let verifyStats: VerifyStats | undefined;
@@ -579,6 +784,49 @@ async function safeR1(runR1: (article: EditorOut) => Promise<R1Decision>, articl
   } catch (error) {
     return { pass: false, issues: [formatLlmError(error, "R1")] };
   }
+}
+
+function canRepair(outcome: ReviewOutcome): boolean {
+  const issues = outcome.repairIssues ?? [];
+  if (issues.length === 0) return false;
+
+  if (outcome.stage === "R2") {
+    return issues.every((issue) => issue.verdict === "inference_missed");
+  }
+
+  if (outcome.stage === "R3") {
+    return issues.every(
+      (issue) =>
+        (issue.verdict === "refuted" || issue.verdict === "uncertain") &&
+        issue.reason !== "search_error" &&
+        issue.reason !== "max_atoms_cap"
+    );
+  }
+
+  return false;
+}
+
+function mergeVerifyStats(a: VerifyStats | undefined, b: VerifyStats | undefined): VerifyStats | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    searches: a.searches + b.searches,
+    serp: a.serp + b.serp,
+    fetches: a.fetches + b.fetches,
+    confirmed: a.confirmed + b.confirmed,
+    refuted: a.refuted + b.refuted,
+    uncertain: a.uncertain + b.uncertain,
+  };
+}
+
+function withRepair(
+  outcome: ReviewOutcome,
+  repairAttempts: number,
+  repaired: boolean,
+  repairedClaims: string[],
+  verify: VerifyStats | undefined
+): ReviewOutcome {
+  return { ...outcome, repairAttempts, repaired, repairedClaims, verify };
 }
 
 function draft(

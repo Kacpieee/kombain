@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { CATEGORIES, buildEditorPrompt, buildR2Prompt, type EditorOut, type R2Atom } from "../prompts.js";
+import { describe, expect, it, vi } from "vitest";
+import { CATEGORIES, buildEditorPrompt, buildR2Prompt, type EditorFeedback, type EditorOut, type R2Atom } from "../prompts.js";
 import { synthesizeArticle, type GenerateFn } from "./llm.js";
 import {
   buildSourceLink,
+  coveredByResearch,
   reviewArticle,
   sanitizeEditorHtml,
   stripInferences,
@@ -380,6 +381,360 @@ describe("buildSourceLink", () => {
     expect(html).toContain("Źródło:");
     expect(html).toContain("&quot;");
     expect(html).not.toContain('x="1"');
+  });
+});
+
+describe("coveredByResearch", () => {
+  const facts = [
+    {
+      claim: "US aquaculture imports 70–80% of seafood",
+      url: "https://example.com/raport",
+      source_type: "search",
+    },
+  ];
+
+  it("exact claim w fakcie jest pokryty", () => {
+    expect(coveredByResearch("US aquaculture imports 70–80% of seafood", facts, "")).toBe(true);
+  });
+
+  it("nowa nazwa własna (Canada) blokuje pokrycie", () => {
+    expect(
+      coveredByResearch("US aquaculture imports 70–80% of seafood, mainly from Canada", facts, "")
+    ).toBe(false);
+  });
+
+  it("nazwa własna na początku zdania (Kanada) blokuje pokrycie", () => {
+    expect(
+      coveredByResearch("Kanada US aquaculture imports 70–80% of seafood", facts, "")
+    ).toBe(false);
+  });
+
+  it("nowa liczba blokuje pokrycie", () => {
+    expect(coveredByResearch("US aquaculture imports 70–85% of seafood", facts, "")).toBe(false);
+  });
+
+  it("75% rdzeni wystarcza, 50% nie", () => {
+    const fact = [
+      {
+        claim: "Rynek dronow rolniczych wzrosl",
+        url: "https://example.com/drony",
+        source_type: "search",
+      },
+    ];
+
+    expect(coveredByResearch("dronow rolniczych rynek", fact, "")).toBe(true);
+    expect(coveredByResearch("rolniczych dronow", fact, "")).toBe(false);
+  });
+});
+
+describe("reviewArticle — bounded repair", () => {
+  const EXTERNAL: R2Atom = { text: "Firma X ma 40% rynku.", type: "external", evidence: "" };
+  const SUPPORTED: R2Atom = { text: "Akapit pierwszy o dronach.", type: "supported", evidence: "cytat" };
+
+  function refuted() {
+    return {
+      status: "ok" as const,
+      result: {
+        results: [{ claim: EXTERNAL.text, verdict: "refuted" as const, evidence_url: "https://e.com/refute", reason: "refuted" as const }],
+      },
+      stats: { searches: 1, serp: 0, fetches: 0, confirmed: 0, refuted: 1, uncertain: 0 },
+    };
+  }
+
+  it("refuted → repair → published, repairAttempts=1", async () => {
+    let r2Calls = 0;
+    const repair = vi.fn(async (_feedback: EditorFeedback) => ({ ...ARTICLE, title: "Poprawiony tytuł" }));
+
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair,
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repairAttempts).toBe(1);
+    expect(result.repaired).toBe(true);
+    expect(result.repairedClaims).toContain(EXTERNAL.text);
+    expect(result.article.title).toBe("Poprawiony tytuł");
+    expect(result.verify?.refuted).toBe(1);
+    expect(repair).toHaveBeenCalledTimes(1);
+    expect(repair.mock.calls[0]?.[0]).toMatchObject({ issues: [{ stage: "R3", verdict: "refuted" }] });
+  });
+
+  it("uncertain → repair → published", async () => {
+    let r2Calls = 0;
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => ({
+        status: "ok",
+        result: {
+          results: [{ claim: EXTERNAL.text, verdict: "uncertain", evidence_url: "", reason: "no_evidence" }],
+        },
+        stats: { searches: 1, serp: 0, fetches: 0, confirmed: 0, refuted: 0, uncertain: 1 },
+      }),
+      repair: async () => ({ ...ARTICLE, title: "Poprawiony tytuł" }),
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repaired).toBe(true);
+    expect(result.needsHumanCheck).toBe(false);
+  });
+
+  it("search_error i max_atoms_cap nie uruchamiają repair", async () => {
+    for (const reason of ["search_error", "max_atoms_cap"] as const) {
+      const repair = vi.fn(async () => ARTICLE);
+      const result = await reviewArticle(ARTICLE, "źródło", {
+        maxRepairAttempts: 1,
+        runR1: async () => ({ pass: true, issues: [] }),
+        runR2: async () => [EXTERNAL],
+        verifyExternal: async () => ({
+          status: "ok",
+          result: {
+            results: [{ claim: EXTERNAL.text, verdict: "uncertain", evidence_url: "", reason }],
+          },
+          stats: { searches: 1, serp: 0, fetches: 0, confirmed: 0, refuted: 0, uncertain: 1 },
+        }),
+        repair,
+      });
+
+      expect(result.status).toBe("draft");
+      expect(repair).not.toHaveBeenCalled();
+    }
+  });
+
+  it("guard nowych encji blokuje publikację przed drugim review", async () => {
+    let r2Calls = 0;
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({ ...ARTICLE, content_html: "<p>Kanada importuje 90% rynku.</p>" }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.repairAttempts).toBe(1);
+    expect(result.repaired).toBe(false);
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+    expect(r2Calls).toBe(1);
+  });
+
+  it("legalna zmiana pierwszego słowa po h2 nie jest nową encją", async () => {
+    const previous = {
+      ...ARTICLE,
+      content_html: "<h2>Wstęp</h2><p>Stary akapit o dronach.</p><h2>Wdrożenie</h2><p>Wnioski.</p>",
+    };
+    let r2Calls = 0;
+
+    const result = await reviewArticle(previous, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...previous,
+        content_html: "<h2>Wstęp</h2><p>Nowy akapit o dronach.</p><h2>Wdrożenie</h2><p>Wnioski.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repaired).toBe(true);
+  });
+
+  it("nowy akronim na początku akapitu po h2 → draft", async () => {
+    const previous = {
+      ...ARTICLE,
+      content_html: "<h2>Wstęp</h2><p>Stary akapit o dronach.</p><h2>Wdrożenie</h2><p>Wnioski.</p>",
+    };
+    let r2Calls = 0;
+
+    const result = await reviewArticle(previous, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...previous,
+        content_html:
+          "<h2>Wstęp</h2><p>NOAA prowadzi program dla sadowników.</p><h2>Wdrożenie</h2><p>Wnioski.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+    expect(result.repaired).toBe(false);
+    expect(r2Calls).toBe(1);
+  });
+
+  it("typowo openery zdań nie są nowymi encjami", async () => {
+    for (const opener of ["Kolejny", "Dzięki", "Nowe", "Podsumowanie", "Eksperci", "Dodatkowe"]) {
+      let r2Calls = 0;
+      const previous = {
+        ...ARTICLE,
+        content_html: "<h2>Wstęp</h2><p>Stary akapit o dronach.</p><h2>Wdrożenie</h2><p>Wnioski.</p>",
+      };
+
+      const result = await reviewArticle(previous, "źródło", {
+        maxRepairAttempts: 1,
+        minRepairedChars: 10,
+        runR1: async () => ({ pass: true, issues: [] }),
+        runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+        verifyExternal: async () => refuted(),
+        repair: async () => ({
+          ...previous,
+          content_html: `<h2>Wstęp</h2><p>${opener} akapit o dronach.</p><h2>Wdrożenie</h2><p>Wnioski.</p>`,
+        }),
+      });
+
+      expect(result.status, `opener: ${opener}`).toBe("published");
+    }
+  });
+
+  it("produkcyjny próg długości: pre>=600 wymaga 600, nie 60%", async () => {
+    const longArticle = {
+      ...ARTICLE,
+      content_html: `<h2>Wstęp</h2><p>${"a ".repeat(400)}</p>`,
+    };
+    let r2Calls = 0;
+
+    const result = await reviewArticle(longArticle, "źródło", {
+      maxRepairAttempts: 1,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({ ...longArticle, content_html: `<p>${"b ".repeat(299)}</p>` }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("zbyt krótki");
+  });
+
+  it("krótki fixture używa progu 60%", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({ ...ARTICLE, content_html: "<p>Za krótko.</p>" }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("zbyt krótki");
+  });
+
+  it("R3 error nie kwalifikuje do repair", async () => {
+    const repair = vi.fn(async () => ARTICLE);
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => ({
+        status: "error",
+        code: "llm_error",
+        error: "429",
+        stats: { searches: 1, serp: 0, fetches: 0, confirmed: 0, refuted: 0, uncertain: 0 },
+      }),
+      repair,
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.repairAttempts).toBe(0);
+    expect(repair).not.toHaveBeenCalled();
+  });
+
+  it("guard długości blokuje zbyt krótki artykuł po repair", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 600,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({ ...ARTICLE, content_html: "<p>Za krótko.</p>" }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("zbyt krótki");
+  });
+
+  it("R2 inference_missed → repair → published", async () => {
+    let r2Calls = 0;
+    const repair = vi.fn(async (_feedback: EditorFeedback) => ARTICLE);
+
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () =>
+        ++r2Calls === 1
+          ? [{ text: "Zupełnie inna treść o pogodzie i cenach paliwa.", type: "inference", evidence: "" }]
+          : [SUPPORTED],
+      repair,
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repairAttempts).toBe(1);
+    expect(repair.mock.calls[0]?.[0]).toMatchObject({
+      issues: [{ stage: "R2", verdict: "inference_missed" }],
+    });
+  });
+
+  it("repair rzuca błąd → draft, repairAttempts=1", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => {
+        throw new Error("model down");
+      },
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.repairAttempts).toBe(1);
+    expect(result.repaired).toBe(false);
+  });
+
+  it("REPAIR_MAX_ATTEMPTS=0 nie woła repair", async () => {
+    const repair = vi.fn(async () => ARTICLE);
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 0,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair,
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.repairAttempts).toBe(0);
+    expect(repair).not.toHaveBeenCalled();
+  });
+
+  it("po repair R1 nie ma drugiego retry (allowR1Retry=false)", async () => {
+    const regenerate = vi.fn(async () => ARTICLE);
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({ ...ARTICLE, title: "X".repeat(61) }),
+      regenerate,
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.stage).toBe("R1");
+    expect(result.repairAttempts).toBe(1);
+    expect(regenerate).not.toHaveBeenCalled();
   });
 });
 

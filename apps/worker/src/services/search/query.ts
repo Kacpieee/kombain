@@ -45,6 +45,21 @@ const ALL_CAPS_STOPLIST = new Set([
   "ZYSK",
 ]);
 
+/** Spójniki/przysłówki, które nie są encjami nawet gdy stoją na początku zdania. */
+const INITIAL_STOPWORDS = new Set([
+  "ponadto",
+  "jednak",
+  "według",
+  "dlatego",
+  "obecnie",
+  "wówczas",
+  "natomiast",
+  "dodatkowo",
+  "następnie",
+  "z",
+  "kolei",
+]);
+
 export interface ClaimEntities {
   quoted: string[];
   numeric: string[];
@@ -80,6 +95,7 @@ export function extractClaimEntities(
   for (const match of claim.matchAll(/\b[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/gu)) {
     const value = match[0];
     if (ALL_CAPS_STOPLIST.has(value.toUpperCase())) continue;
+    if (options.includeSentenceStart && INITIAL_STOPWORDS.has(value.toLowerCase())) continue;
 
     const before = claim.slice(0, match.index ?? 0);
     const sentenceStart = (match.index ?? 0) === 0 || /[.!?]\s*$|\n\s*$/.test(before);

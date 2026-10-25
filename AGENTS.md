@@ -48,10 +48,11 @@ Remote: `git@github.com:Kacpieee/kombain.git` (SSH). Po każdym tasku: pętla `s
 7. **Review 3-stopniowe (3.8 Flash, blokujące do `draft`, nie do `rejected`):**
    - R1 technical (bez searchu): HTML/meta/struktura. Fail → 1x retry.
    - R2 extract (bez searchu): atomy `supported-by-source/external/inference`. `inference` bez dowodu → do wycięcia.
-   - R3 verify (DeepSeek Search+Fetch + Flash-Lite; rollback `gemini-3.8-flash` z search grounding): tylko atomy `external` → `{confirmed/refuted/uncertain + evidence URL}`. `refuted` → `draft`, `uncertain` → `draft + needs_human_check`.
+   - R3 verify (DeepSeek Search+Fetch + Flash-Lite; rollback `gemini-3.8-flash` z search grounding): tylko atomy `external` → `{confirmed/refuted/uncertain + evidence URL}`. `refuted` → 1× repair Redaktora, `uncertain` → 1× repair, potem `draft` (+ `needs_human_check` dla `uncertain`).
+   - **Bounded repair (`REPAIR_MAX_ATTEMPTS=1`)**: R1 retry i repair po R2/R3 dostają `EditorFeedback` (poprzedni artykuł + issues). Po repair pełny `R1 → R2 → R3`; publikacja tylko gdy clean. `search_error`/`max_atoms_cap`/błąd LLM/R1 fail = draft bez repair.
 8. **Stany (krytyczne — chroni przed utratą dobrego tematu):**
    - `rejected` = tylko permanentne: za krótki, `is_relevant=false`, `is_duplicate=true`. Dedup blokuje ponowienie.
-   - `draft`/`needs_human_check` = fail review, błąd LLM, `refuted/uncertain`. Dedup NIE blokuje: retry robi `ON CONFLICT(source_url) DO UPDATE`.
+   - `draft`/`needs_human_check` = fail review po nieudanym repair, błąd LLM, `refuted/uncertain`. Dedup NIE blokuje: retry robi `ON CONFLICT(source_url) DO UPDATE`.
    - `published` = tylko po zielonym R1+R2+R3.
    - Ciche porzucenia (duplikat URL, duplikat semantyczny bramki) = licznik + log JSONL, bez wiersza w DB.
 9. **Persist:** `category_id NOT NULL`, `slug UNIQUE` (kolizja → 4-znak suffix), tagi `ON CONFLICT(slug)`, link `ON CONFLICT DO NOTHING`, całość w `BEGIN/COMMIT`. `source_url` zawsze z wejścia `processArticle(link)`, nigdy z dumpa historii ani `Loop Over Items`.

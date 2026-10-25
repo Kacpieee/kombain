@@ -15,6 +15,14 @@ describe("loadConfig", () => {
     expect(config.GEMINI_LITE_MODEL).toBe("gemini-3.1-flash-lite");
     expect(config.GEMINI_PRO_MODEL).toBe("gemini-3.8-flash");
     expect(config.R2_BUCKET).toBe("articles");
+    expect(config.REPAIR_MAX_ATTEMPTS).toBe(1);
+  });
+
+  it("koercuje repair attempts i dopuszcza 0", () => {
+    expect(loadConfig({ ...BASE, REPAIR_MAX_ATTEMPTS: "0" } as NodeJS.ProcessEnv).REPAIR_MAX_ATTEMPTS).toBe(0);
+    expect(loadConfig({ ...BASE, REPAIR_MAX_ATTEMPTS: "2" } as NodeJS.ProcessEnv).REPAIR_MAX_ATTEMPTS).toBe(2);
+    expect(loadConfig({ ...BASE, REPAIR_MAX_ATTEMPTS: "" } as NodeJS.ProcessEnv).REPAIR_MAX_ATTEMPTS).toBe(1);
+    expect(() => loadConfig({ ...BASE, REPAIR_MAX_ATTEMPTS: "3" } as NodeJS.ProcessEnv)).toThrow();
   });
 
   it("koercuje liczby z env", () => {

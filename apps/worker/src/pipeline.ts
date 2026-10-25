@@ -13,7 +13,7 @@ import { reviewArticle } from "./services/review.js";
 import { scrapeArticle } from "./services/scraper.js";
 import type { ReviewOutcome } from "./services/review.js";
 import type { VerifyStats } from "./services/factcheck.js";
-import type { EditorOut } from "./prompts.js";
+import type { EditorFeedback, EditorOut } from "./prompts.js";
 
 export type ArticleOutcome =
   | {
@@ -23,8 +23,21 @@ export type ArticleOutcome =
       via: "direct" | "scrapingant" | null;
       imageVia: "r2" | "default";
       verify?: VerifyStats;
+      repairAttempts?: number;
+      repaired?: boolean;
+      repairedClaims?: string[];
     }
-  | { status: "draft"; articleId: string; slug: string; via: "direct" | "scrapingant" | null; imageVia?: "r2" | "default"; verify?: VerifyStats }
+  | {
+      status: "draft";
+      articleId: string;
+      slug: string;
+      via: "direct" | "scrapingant" | null;
+      imageVia?: "r2" | "default";
+      verify?: VerifyStats;
+      repairAttempts?: number;
+      repaired?: boolean;
+      repairedClaims?: string[];
+    }
   | { status: "rejected"; articleId: string | null; via: "direct" | "scrapingant" | null }
   | { status: "dropped"; reason: "url_duplicate" | "semantic_duplicate" | "rejected_exists" }
   | { status: "error"; stage: "scrape" | "gate" | "editor" | "review" | "persist" | "pipeline"; error: string }
@@ -47,6 +60,8 @@ export interface PipelineOverrides {
   skipDuplicateCheck?: boolean;
   /** Limit atomów R3 z AppConfig. */
   verifyMaxAtoms?: number;
+  /** Limit napraw Redaktora z AppConfig (0 wyłącza). */
+  maxRepairAttempts?: number;
   scrape?: typeof scrapeArticle;
   history?: typeof fetchHistoricalContext30d;
   classify?: typeof classifyArticle;
@@ -172,6 +187,7 @@ export async function processArticle(
   const reviewed = await review(edited.article, scraped.article.text, {
     researchBrief: researchFacts,
     verifyMaxAtoms: overrides.verifyMaxAtoms,
+    maxRepairAttempts: overrides.maxRepairAttempts,
     regenerate: async (issues: string[], previousArticle: EditorOut): Promise<EditorOut> => {
       const retry = await synthesize({
         ...editorInput,
@@ -181,6 +197,11 @@ export async function processArticle(
         },
       });
       if (retry.status === "error") throw new Error(`Retry Redaktora nieudany (${issues.length} uwag): ${retry.error}`);
+      return retry.article;
+    },
+    repair: async (feedback: EditorFeedback): Promise<EditorOut> => {
+      const retry = await synthesize({ ...editorInput, feedback });
+      if (retry.status === "error") throw new Error(`Repair Redaktora nieudany: ${retry.error}`);
       return retry.article;
     },
   });
@@ -206,7 +227,16 @@ export async function processArticle(
     });
 
     if (saved.status === "draft") {
-      return { status: "draft", articleId: saved.articleId, slug: saved.slug, via, verify: reviewed.verify };
+      return {
+        status: "draft",
+        articleId: saved.articleId,
+        slug: saved.slug,
+        via,
+        verify: reviewed.verify,
+        repairAttempts: reviewed.repairAttempts,
+        repaired: reviewed.repaired,
+        repairedClaims: reviewed.repairedClaims,
+      };
     }
     return persistFailure(saved.status);
   }
@@ -242,6 +272,9 @@ export async function processArticle(
       via,
       imageVia: image.via,
       verify: reviewed.verify,
+      repairAttempts: reviewed.repairAttempts,
+      repaired: reviewed.repaired,
+      repairedClaims: reviewed.repairedClaims,
     };
   }
   return persistFailure(saved.status);

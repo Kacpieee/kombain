@@ -1,41 +1,53 @@
-# Final report — F2-T10b (Feedback plumbing, sync HTML, diagnostyka)
+# Final report — F2-T10c (Bounded repair loop + guardy)
 
 ## Status
 Done (Mode: CRITICAL)
 
 ## Pre-mortem (przed kodem)
-- **UX:** feedback do Redaktora może wydłużyć prompt; `content_html` jest cięty do 8000 znaków na granicy bloku, a `evidence_url` tylko http(s) ≤200 znaków. Bez zmiany polityki publikacji.
-- **Sync/PG:** bez DDL; `article.content_html` jest synchronizowane z `cleanedHtml`, żeby przyszły repair nie przywracał wyciętych wniosków.
-- **LLM:** `RepairIssue`/`EditorFeedback` są kontraktem promptu, nie schematem odpowiedzi; model nadal zwraca ten sam JSON. Brak nowych wywołań LLM w tym tasku.
-- **Pytania TERAZ-vs-KIEDYŚ:** `REPAIR_MAX_ATTEMPTS` i pętla pozostają w F2-T10c; tutaj tylko plumbing.
+- **UX:** repair może skrócić artykuł lub usunąć dobry fakt, którego R3 nie potwierdziło. Guardy: minimalna długość po repair, deterministyczny zakaz nowych liczby/encji, ponowny pełny R1→R2→R3.
+- **Publikacja:** auto-publish po clean repair oznacza, że człowiek nie widzi usuniętego faktu — `repairedClaims` trafia do JSONL, a `repair_*` do `run_summary`.
+- **LLM:** maks. 1 repair (config 0–2), brak rekurencji; `search_error`, `max_atoms_cap`, błąd LLM, 0 atomów R2 i fail R1 nie kwalifikują się do repair.
+- **Sync/PG:** bez DDL; `coveredByResearch` wymaga pokrycia encji, żeby repair/R3 nie pomijały nowych nazw własnych.
+- **Pytania TERAZ-vs-KIEDYŚ:** domyślnie 1 próba; pomiar A/B na VPS po wdrożeniu. Brak blokerów.
 
 ## Summary
-Redaktor dostaje realny feedback (issues + poprzednia wersja) zarówno przy retry R1, jak i pod przyszły repair. `ReviewOutcome` zawiera pełną listę `refuted`/`uncertain` z URL oraz strukturalne `repairIssues`. `VERIFY_MAX_ATOMS` płynie z configu, dry-run zlicza `verify_*`, a `--dry-run --url` omija dedup URL, żeby można było diagnozować istniejące drafty.
+Review ma teraz ograniczoną pętlę naprawczą: po `refuted`/`uncertain` z R3 albo niewyciętym `inference` z R2 Redaktor dostaje strukturalny feedback, a cały artykuł przechodzi ponownie R1→R2→R3. Publikacja następuje tylko po czystym przebiegu; guardy blokują zbyt krótki tekst i nowe encje/liczby. `REPAIR_MAX_ATTEMPTS` płynie z configu, a `repair_*` są liczone także w dry-run.
 
 ## Changes
-- `apps/worker/src/prompts.ts` — `RepairIssue`, `EditorFeedback`, `EditorPromptInput.feedback`; sekcja `TRYB POPRAWY` z poprzednim JSON-em, cięcie HTML po blokach (8000), sanityzacja `evidence_url`
-- `apps/worker/src/services/review.ts` — `ReviewDeps.regenerate(issues, previousArticle)`, `ReviewDeps.verifyMaxAtoms`, `ReviewOutcome.repairIssues`; sync `content_html` po sanityzacji i strip; pełne `issues` (refuted + URL, uncertain); `needsHumanCheck` dla mieszanki refuted+uncertain
-- `apps/worker/src/pipeline.ts` — `verifyMaxAtoms`, `skipDuplicateCheck`; `regenerate` przekazuje `EditorFeedback` do `synthesize`
-- `apps/worker/src/orchestrator.ts` — `verifyMaxAtoms` z configu, `skipDuplicateCheck` dla `--dry-run --url`, `countVerify` dla `dry_run`
-- Testy: review 57 (z 50) + `review.verify-max` 1, pipeline 25, orchestrator 28; pełny zestaw **319 unit**
-- `docs/plans.md` (T10b usunięte, TERAZ → T10c), `docs/STATUS.md`
+- `apps/worker/src/config.ts` + testy — `REPAIR_MAX_ATTEMPTS` (0–2, default 1); `.env.example`, `deploy/README.md`, `cli.ts` mask
+- `apps/worker/src/services/review.ts`:
+  - `reviewOnce` + pętla `reviewArticle` (max 0/1/2, bez rekurencji)
+  - `ReviewDeps.repair`, `maxRepairAttempts`, `minRepairedChars`
+  - `canRepair` (R2 `inference_missed`, R3 `refuted`/`uncertain`; blokada `search_error`/`max_atoms_cap`)
+  - guard długości: pre≥600 → ≥600; krótkie fixture’y → 60%
+  - guard nowych encji/liczb przed drugim review
+  - `coveredByResearch(claim, facts, sourceText)` — exact, pokrycie encji, 75% rdzeni
+  - `repairAttempts`, `repaired`, `repairedClaims`; `mergeVerifyStats`
+- `apps/worker/src/pipeline.ts` — `maxRepairAttempts`, `repair` przez `synthesize` z `EditorFeedback`; pola repair w wyniku
+- `apps/worker/src/orchestrator.ts` — `repair_attempts/success/failed`, liczenie w dry-run, `repairedClaims` w evencie
+- `AGENTS.md` §2.7–2.8 — bounded repair 1× przed draftem
+- Testy: config 5, review 77, pipeline 26, orchestrator 31; pełny zestaw **345 unit**
+- `docs/plans.md` (T10c usunięte; TERAZ → OPS/F3-T2), `docs/STATUS.md`
 
 ## Verification (liczbowo)
 - `scripts/verify.sh`: **PASS** (exit 0)
 - `tsc --noEmit`: **0 błędów**
-- `vitest`: **319 passed / 0 failed / 33 skipped**
+- `vitest`: **345 passed / 0 failed / 33 skipped**
 - PG (podman, postgres:16): **33 passed**
 - Zero sieci w testach
 
 ## Review Loop Audit
-- Liczba rund Reviewera: 1/3 Request changes (truncateHtml/testy) → poprawki → **2/3 Approve**
+- Liczba rund Reviewera: 1/3 Request changes (visibleText/stoplista/testy guardów) → poprawki; 2/3 Request changes (guard opener / test Kanada) → poprawki; 3/3 Request changes (test granicy bloków/akronimu) → poprawki; 4/3 (wyjątek zatwierdzony) → **Approve**
 
 ## Risks
-- `ReviewOutcome.repairIssues` jest opcjonalne (kompatybilność z mockami); T10c musi używać `?? []`.
-- Feedback zawiera poprzedni artykuł w JSON; przy bardzo długich artykułach prompt rośnie, ale `content_html` jest cięty.
-- `truncateHtml` przy jednym ogromnym bloku bez closera zwraca ~8000 znaków bez domknięcia tagu; testy pokrywają fallback i cięcie po `</p>` z górnym limitem.
-- `checkUrlDuplicate` nadal blokuje realny `run --url` dla istniejącego draftu; poza dry-runem retry draftu wymaga obejścia — kandydat na T10c/OPT.
-- Bez zmian polityki publikacji — repair loop dopiero w T10c.
+- Guard nowych encji ignoruje pojedynczy wyraz na początku zdania (np. „Kolejny”), żeby nie blokować legalnych openerów; R3 nadal weryfikuje treść. Nazwy wielowyrazowe, akronimy i liczby blokują twardo.
+- `coveredByResearch` liczy 75% rdzeni względem faktu, więc atom rozszerzony o nową treść lowercase (bez encji/liczby) może zostać uznany za pokryty — świadomy kompromis; testy pokrywają Canada/Kanada/liczbę.
+- Repair usuwa fakty, których R3 nie potwierdziło; przy fałszywym `uncertain` może usunąć prawdziwy fakt. Mierzyć `draft_rate` i `repairedClaims` w A/B.
+- `REPAIR_MAX_ATTEMPTS=2` oznacza do 3 przebiegów review; domyślnie 1.
+- `checkUrlDuplicate` nadal blokuje realny `run --url` dla istniejącego draftu; dry-run ma obejście, realny retry wymaga T10c/OPT poza zakresem.
+- Prompt repair rośnie o poprzedni JSON (~8k HTML); koszt mierzyć w OPS.
+- Draft po guardzie zapisuje `repairedHtml` z zakwestionowanymi encjami (nie wersję pre-repair); człowiek widzi go z etykietą w `rejection_reason` — kandydat na OPT.
 
 ## Next steps
-- F2-T10c: bounded repair loop, `REPAIR_MAX_ATTEMPTS`, guardy encji/długości, metryki `repair_*`, AGENTS §2.7–2.8.
+- OPS: lokalne A/B 3–5 runów AgFunder, potem VPS (rebuild + `REPAIR_MAX_ATTEMPTS=1`) i pomiar `draft_rate`/`repair_*`/`verify_*`.
+- F3-T2: `media.kombain.pl`, defaulty kategorii, webhook purge.
