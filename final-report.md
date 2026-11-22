@@ -50,3 +50,7 @@ Po wdrożeniu F3-T2 wykonano 14 lokalnych dry-runów AgFunder (`run --dry-run --
 - `verify_fetches`: 2 w jednym runie; reszta 0; brak `search_error`.
 
 Drafty: guard nowych encji złapał m.in. „agtech”, „zmagaj”, „jednocześnie”, „trudny środek”; po złagodzeniu guardu zostały realne `uncertain` (Hatch Blue/SBA, Wielkie Jeziora) i jeden `refuted` (70–80% importu). Guard: pojedyncze nazwy własne nie blokują repair (R3 je weryfikuje); nadal blokują liczby (także w cytatach), akronimy i nazwy wielowyrazowe. `INITIAL_STOPWORDS`/`COMMON_TITLE_WORDS` rozszerzone. Próbka jest mała — nie dostrajać dalej bez kolejnych 10+ runów.
+
+## OPS release helper (po F3-T2)
+
+`deploy/scripts/release-worker.sh` automatyzuje transfer repo → VPS (bez `.env*` i `worker.env*`), remote `docker compose build`, `check-env` i `upload-defaults`. Dodaje brakujące `VERIFY_MAX_ATOMS=8`/`REPAIR_MAX_ATTEMPTS=1` tylko po pełnej linii (nie skleja zmiennych przy braku końcowego newline), waliduje `VPS_USER/HOST/DIR`, nie uruchamia pipeline’u ani crona. README §11.1a.

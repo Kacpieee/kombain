@@ -21,6 +21,7 @@
 - F3-T1: `apps/web` Astro SSR + `@astrojs/cloudflare` — `/`, `/kategoria/[slug]`, `/artykul/[slug]`, `404`, `directus.ts` (read-only, filtry, cache `s-maxage=3600`), layout/karty/TL;DR/Tech summary, link „Źródło:” z kodu; 300 unit + 33 PG, `astro build` w verify
 - F3-T2: R2/defaulty/webhook — 6 webp 1200×675 w `apps/worker/assets/defaults`, skrypt `upload-defaults.ts` (walidacja sharp + `defaults/*.webp` na R2), `uploadToR2` współdzielony z media, runbook §15 (`media.kombain.pl`, Directus → Pages deploy hook, purge cache); 349 unit + 33 PG
 - Hotfix po A/B: repair guard nie blokuje pojedynczych nazw własnych/openerów (liczby, akronimy i nazwy wielowyrazowe nadal blokują); 11 ważnych dry-runów AgFunder: 5 published / 6 draft, repair 8/2/6; 356 unit + 33 PG
+- OPS: `deploy/scripts/release-worker.sh` — jednokomendowy transfer + build + check-env + upload defaultów (bez sekretów w repo); brak SSH z dev-harness, skrypt do uruchomienia przez użytkownika
 
 ## W trakcie
 - (pusto)

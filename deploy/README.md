@@ -230,6 +230,18 @@ cd <repo>
 tar czf - package.json tsconfig.json .dockerignore packages apps/worker deploy | ssh <USER>@<VPS_IP> 'mkdir -p ~/kombain && tar xzf - -C ~/kombain'
 ```
 
+### 11.1a Jednokomendowy release (lokalnie)
+
+Skrypt robi transfer (bez `deploy/worker.env`), build obrazu, `check-env` i upload defaultów:
+
+```bash
+cd <repo>
+VPS_USER=ubuntu VPS_HOST=<VPS_IP> VPS_DIR=/home/ubuntu/kombain \
+  bash deploy/scripts/release-worker.sh
+```
+
+Wymaga SSH do VPS; sekrety zostają wyłącznie w `deploy/worker.env` na VPS. Skrypt nie uruchamia pipeline'u ani crona — po nim zrób dry-run (np. `--limit 1`).
+
 ### 11.2 Env (tylko na VPS, `chmod 600`, nigdy w repo)
 
 ```bash
