@@ -74,7 +74,8 @@ async function defaultFetchImage(url: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function defaultUpload(key: string, body: Buffer, contentType: string): Promise<string> {
+/** Upload do R2 (S3 API) — wspólny dla artykułów i defaultów kategorii. */
+export async function uploadToR2(key: string, body: Buffer, contentType: string): Promise<string> {
   const endpoint = process.env.R2_ENDPOINT;
   const bucket = process.env.R2_BUCKET;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -98,3 +99,5 @@ async function defaultUpload(key: string, body: Buffer, contentType: string): Pr
   const base = (process.env.R2_PUBLIC_BASE_URL ?? MEDIA_BASE).replace(/\/$/, "");
   return `${base}/${key}`;
 }
+
+const defaultUpload = uploadToR2;

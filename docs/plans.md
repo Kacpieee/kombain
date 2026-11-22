@@ -6,7 +6,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 ## TERAZ
 
 - [ ] OPS (użytkownik, VPS): lokalne A/B na AgFunderze (3–5 runów `run --dry-run --url`), a następnie wdrożenie F2-T9b + F2-T10a/b/c na VPS (`VERIFY_MAX_ATOMS=8`, `REPAIR_MAX_ATTEMPTS=1`, rebuild obrazu, pomiar `draft_rate`, `repair_*` i `verify_*`)
-- [ ] F3-T2 R2 `media.kombain.pl` + defaulty kategorii (6 plików `defaults/*.webp`) + webhook deploy — [SAFE]
 
 ## KIEDYŚ
 - [ ] OPT: licznik `research_failed` + `draft_rate` w `run_summary` (research ma dziś tylko alert, brak licznika) — [SAFE]

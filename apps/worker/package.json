@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "bun src/index.ts",
+    "media:defaults": "bun src/scripts/upload-defaults.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

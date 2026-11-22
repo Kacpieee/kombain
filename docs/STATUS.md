@@ -19,13 +19,13 @@
 - F2-T10b: feedback plumbing — `RepairIssue`/`EditorFeedback` w promptcie Redaktora (poprzedni JSON, issues, bezpieczny evidence_url, cięcie HTML po blokach), R1 `regenerate(issues, previousArticle)`, sync `article.content_html` po sanityzacji i `stripInferences`, pełne `issues` (`refuted` + URL + `uncertain`), `repairIssues`, `verifyMaxAtoms` z configu, `verify_*` w dry-run, `skipDuplicateCheck` dla `--dry-run --url`; 319 unit + 33 PG
 - F2-T10c: bounded repair loop — `REPAIR_MAX_ATTEMPTS=1` z configu, pętla `reviewOnce`, repair po R2/R3 z feedbackiem, deterministyczne guardy długości (≥600 dla pre≥600) i nowych encji, `coveredByResearch` z guardem encji + 75% rdzeni, metryki `repair_*` (także dry-run), AGENTS §2.7–2.8; 345 unit + 33 PG
 - F3-T1: `apps/web` Astro SSR + `@astrojs/cloudflare` — `/`, `/kategoria/[slug]`, `/artykul/[slug]`, `404`, `directus.ts` (read-only, filtry, cache `s-maxage=3600`), layout/karty/TL;DR/Tech summary, link „Źródło:” z kodu; 300 unit + 33 PG, `astro build` w verify
+- F3-T2: R2/defaulty/webhook — 6 webp 1200×675 w `apps/worker/assets/defaults`, skrypt `upload-defaults.ts` (walidacja sharp + `defaults/*.webp` na R2), `uploadToR2` współdzielony z media, runbook §15 (`media.kombain.pl`, Directus → Pages deploy hook, purge cache); 349 unit + 33 PG
 
 ## W trakcie
 - (pusto)
 
 ## Następne (z plans.md TERAZ)
 - OPS (VPS): lokalne A/B + wdrożenie F2-T9b + F2-T10a/b/c i pomiar
-- F3-T2: `media.kombain.pl` + defaulty kategorii + webhook
 
 ## Hotfixy po pierwszym runie na VPS
 - dry_run loguje `stage/needsHumanCheck/issues`

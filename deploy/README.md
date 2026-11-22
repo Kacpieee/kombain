@@ -266,6 +266,8 @@ chmod 600 deploy/worker.env
 
 ### 11.3 Pierwszy run (limit 1, ręcznie)
 
+Przed pierwszym runem wgraj defaulty kategorii (§15.2) — inaczej publikacje bez `og:image` dostaną URL defaultu, którego jeszcze nie ma na R2.
+
 ```bash
 cd ~/kombain
 docker compose -f deploy/worker.compose.yml build
@@ -377,10 +379,81 @@ DIRECTUS_URL=https://cms.kombain.pl
 DIRECTUS_PUBLIC_READ_TOKEN=<token read-only>
 ```
 
-**Cache:** trasy SSR ustawiają `Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400`; strony 404 mają `no-store`. Po ręcznej edycji artykułu w Directusie wyczyść cache Cloudflare (F3-T2: webhook).
+**Cache:** trasy SSR ustawiają `Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400`; strony 404 mają `no-store`. Po ręcznej edycji artykułu w Directusie uruchom deploy hook / purge (§15).
 
 **Smoke test:**
 ```bash
 curl -sI https://kombain.pl/ | grep -i cache-control
 curl -s https://kombain.pl/ | grep -o '<title>[^<]*' | head -1
 ```
+
+## 15. R2 `media.kombain.pl`, defaulty kategorii i webhook Pages
+
+### 15.1 Bucket i domena publiczna
+
+1. Cloudflare R2 → bucket `articles` (ten sam, którego używa worker).
+2. R2 → bucket → **Settings → Custom Domains** → `media.kombain.pl`.
+3. Cloudflare utworzy rekord DNS; poczekaj na status **Active**.
+4. W `deploy/worker.env` muszą być ustawione:
+   `R2_ENDPOINT`, `R2_BUCKET=articles`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+   `R2_PUBLIC_BASE_URL=https://media.kombain.pl`.
+
+Worker wgrywa artykuły jako `articles/{slug}.webp` z `Cache-Control: public, max-age=31536000, immutable`.
+
+### 15.2 Defaulty 6 kategorii
+
+Pliki źródłowe: `apps/worker/assets/defaults/*.webp` (1200×675, webp). Upload **na VPS przez kontener** (bez Buna na hoście):
+
+```bash
+cd ~/kombain
+docker compose -f deploy/worker.compose.yml run --rm --build worker \
+  bun src/scripts/upload-defaults.ts
+```
+
+Alternatywnie lokalnie, jeśli masz Bun i `deploy/worker.env`:
+
+```bash
+set -a; . deploy/worker.env; set +a
+bun apps/worker/src/scripts/upload-defaults.ts
+```
+
+Zrób to **przed pierwszym runem workera** — publikacja bez `og:image` dostaje URL defaultu, a bez wgranych plików będzie 404.
+
+Oczekiwane: 6 linii `OK <kategoria>: https://media.kombain.pl/defaults/<slug>.webp`.
+
+Weryfikacja:
+
+```bash
+for slug in ai-i-automatyzacja rolnictwo-precyzyjne inteligentne-maszyny-i-drony \
+  biotechnologia-i-nauka agroenergetyka biznes-agtech-i-prawo; do
+  curl -sI "https://media.kombain.pl/defaults/$slug.webp" \
+    | grep -Ei 'HTTP/|content-type|cache-control' | tr '\n' ' '
+  echo
+done
+```
+
+Oczekiwane: `200`, `content-type: image/webp`, `cache-control: public, max-age=31536000, immutable`.
+
+### 15.3 Webhook: Directus → Cloudflare Pages
+
+1. Cloudflare Pages → projekt frontendu → **Settings → Builds & deployments → Deploy hooks**.
+2. Utwórz hook `directus-articles-publish` i skopiuj URL (trzymaj poza repo).
+3. Directus → **Settings → Flows** → nowy flow:
+   - Trigger: **Event Hook**, kolekcja `articles`, akcje `create` + `update`.
+   - Condition (opcjonalny): `$trigger.payload.status == 'published'`. Uwaga: przy `update` payload może zawierać tylko zmienione pola — jeśli nie masz pewności, pomiń warunek (deploy przy każdym create/update) albo dodaj drugi flow.
+   - Operation: **Webhook / HTTP Request** → `POST` na URL deploy hooka, timeout 10 s.
+   - Bez body; Pages i tak przebuduje projekt.
+   - **Ważne:** worker pisze bezpośrednio do PostgreSQL, z pominięciem API Directusa, więc ten Event Hook dotyczy ręcznych edycji w panelu/API. Publikacje pipeline’u nie wywołają Flow — ich listingi odświeżą się przez cache TTL/SWR; jeśli mają być natychmiast, dodaj webhook po stronie workera (poza zakresem F3-T2).
+4. Test ręczny:
+
+```bash
+curl -fsS -X POST "$PAGES_DEPLOY_HOOK_URL" -o /dev/null -w '%{http_code}\n'
+```
+
+`PAGES_DEPLOY_HOOK_URL` trzymaj w Directusie/Cloudflare, nie w repo ani w `.env` workera.
+
+### 15.4 Cache po publikacji
+
+Deploy hook odświeża build Pages. SSR-owe odpowiedzi mają `s-maxage=3600` + SWR, więc po edycji artykułu w Directusie Cache-Control nadal może podać starą wersję do 1 h. Docelowo dodaj purge cache Cloudflare w tym samym Flow (wymaga `CF_ZONE_ID` + tokenu z uprawnieniem `Cache Purge`); do tego czasu ręczny purge po ważnej korekcie.
+
+Uwaga: `uploadToR2` ustawia `Cache-Control: public, max-age=31536000, immutable`. Podmiana defaultu pod tą samą nazwą nie odświeży cache — użyj nowej nazwy/version (wymaga zmiany `DEFAULT_CATEGORY_IMAGES` i deployu workera) albo wykonaj purge R2/CDN.
