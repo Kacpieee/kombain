@@ -549,6 +549,134 @@ describe("reviewArticle — bounded repair", () => {
     expect(result.repaired).toBe(true);
   });
 
+  it("pojedyncza nazwa własna w środku zdania nie blokuje legalnej poprawki", async () => {
+    let r2Calls = 0;
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...ARTICLE,
+        content_html: "<p>W sektorze Agtech rośnie sprzedaż dronów.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repaired).toBe(true);
+  });
+
+  it("nazwa wielowyrazowa (Nowa Zelandia) nadal blokuje repair", async () => {
+    for (const content of [
+      "<p>Nowa Zelandia importuje drony.</p>",
+      "<p>Drony trafiają do Nowej Zelandii.</p>",
+    ]) {
+      const result = await reviewArticle(ARTICLE, "źródło", {
+        maxRepairAttempts: 1,
+        minRepairedChars: 10,
+        runR1: async () => ({ pass: true, issues: [] }),
+        runR2: async () => [EXTERNAL],
+        verifyExternal: async () => refuted(),
+        repair: async () => ({ ...ARTICLE, content_html: content }),
+      });
+
+      expect(result.status, content).toBe("draft");
+      expect(result.issues.join(" "), content).toContain("nowe fakty");
+    }
+  });
+
+  it("liczba w cytacie bez akronimu nie przemyka przez guard", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...ARTICLE,
+        content_html: "<p>Raport „70–80%” opisuje drony w sadach.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+  });
+
+  it("nazwa wielowyrazowa z pierwszym wyrazem ze stoplisty (Nowy Jork) blokuje", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...ARTICLE,
+        content_html: "<p>Nowy Jork importuje drony.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+  });
+
+  it("zachowany cytat z akronimem/nazwą nie blokuje repair", async () => {
+    const previous = {
+      ...ARTICLE,
+      content_html: "<p>Raport „NOAA 2025” i „AgFunder News” opisuje drony w sadach.</p>",
+    };
+    let r2Calls = 0;
+
+    const result = await reviewArticle(previous, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => (++r2Calls === 1 ? [EXTERNAL] : [SUPPORTED]),
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...previous,
+        content_html: "<p>Raport „NOAA 2025” i „AgFunder News” opisuje drony w sadach i w winnicach.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("published");
+    expect(result.repaired).toBe(true);
+  });
+
+  it("nowy cytat z nową nazwą nadal blokuje repair", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...ARTICLE,
+        content_html: "<p>Raport „Acme Corp” opisuje drony w sadach.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+  });
+
+  it("rok w cytacie obok akronimu → draft", async () => {
+    const result = await reviewArticle(ARTICLE, "źródło", {
+      maxRepairAttempts: 1,
+      minRepairedChars: 10,
+      runR1: async () => ({ pass: true, issues: [] }),
+      runR2: async () => [EXTERNAL],
+      verifyExternal: async () => refuted(),
+      repair: async () => ({
+        ...ARTICLE,
+        content_html: "<p>Raport „NOAA 2025” opisuje drony w sadach.</p>",
+      }),
+    });
+
+    expect(result.status).toBe("draft");
+    expect(result.issues.join(" ")).toContain("nowe fakty");
+  });
+
   it("nowy akronim na początku akapitu po h2 → draft", async () => {
     const previous = {
       ...ARTICLE,
@@ -576,7 +704,7 @@ describe("reviewArticle — bounded repair", () => {
   });
 
   it("typowo openery zdań nie są nowymi encjami", async () => {
-    for (const opener of ["Kolejny", "Dzięki", "Nowe", "Podsumowanie", "Eksperci", "Dodatkowe"]) {
+    for (const opener of ["Kolejny", "Dzięki", "Nowe", "Podsumowanie", "Eksperci", "Dodatkowe", "Jednocześnie", "Również"]) {
       let r2Calls = 0;
       const previous = {
         ...ARTICLE,

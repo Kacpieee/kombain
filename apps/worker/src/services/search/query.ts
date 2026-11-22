@@ -56,6 +56,15 @@ const INITIAL_STOPWORDS = new Set([
   "natomiast",
   "dodatkowo",
   "następnie",
+  "jednocześnie",
+  "również",
+  "także",
+  "zatem",
+  "więc",
+  "jednakże",
+  "zarówno",
+  "często",
+  "zwykle",
   "z",
   "kolei",
 ]);
@@ -75,6 +84,11 @@ export interface ExtractClaimEntitiesOptions {
 export function isAcronym(value: string): boolean {
   const letters = value.replace(/[^\p{L}]/gu, "");
   return letters.length >= 2 && letters.length <= 6 && letters === letters.toUpperCase();
+}
+
+/** Czy token jest stoplistowanym rzeczownikiem/spójnikiem (dla guardów encji). */
+export function isStoplistedWord(value: string): boolean {
+  return ALL_CAPS_STOPLIST.has(value.toUpperCase()) || INITIAL_STOPWORDS.has(value.toLowerCase());
 }
 
 /** Encje claimu: cytaty, liczby/lata i nazwy własne (domyślnie bez wyrazów na początku zdania). */

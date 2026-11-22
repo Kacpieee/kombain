@@ -24,12 +24,12 @@ Dodano 6 gotowych grafik defaultowych per kategoria, skrypt walidujący i wgrywa
 ## Verification (liczbowo)
 - `scripts/verify.sh`: **PASS**
 - `tsc --noEmit`: **0 błędów**
-- `vitest`: **349 passed / 0 failed / 33 skipped**
+- `vitest`: **356 passed / 0 failed / 33 skipped**
 - PG (podman, postgres:16): **33 passed**
 - Zero sieci w testach (upload wstrzykiwany)
 
 ## Review Loop Audit
-- Liczba rund Reviewera: 1/3 Request changes (docker upload/runbook) → poprawki → **2/3 Approve**
+- Liczba rund Reviewera: F3-T2 1/3 Request changes (docker upload/runbook) → **2/3 Approve**; hotfix guardu 1/3 Request changes → 2/3 Request changes → 3/3 Request changes (cytat z nazwą) → poprawki; 4/3 (wyjątek) **Approve**.
 
 ## Risks
 - Assety i skrypt są gotowe, ale **nie wykonano uploadu na R2** — brak kluczy w dev-harness; wymaga `bun apps/worker/src/scripts/upload-defaults.ts` na VPS z `deploy/worker.env`.
@@ -39,3 +39,14 @@ Dodano 6 gotowych grafik defaultowych per kategoria, skrypt walidujący i wgrywa
 
 ## Next steps
 - OPS: lokalne A/B + wdrożenie F2-T9b/T10 na VPS, upload defaultów, konfiguracja R2 domain i webhooka.
+
+## Post-release A/B (2026-11-22) + guard hotfix
+
+Po wdrożeniu F3-T2 wykonano 14 lokalnych dry-runów AgFunder (`run --dry-run --url`, `REPAIR_MAX_ATTEMPTS=1`); pierwsze 3 odrzucono, bo lokalny Postgres był zatrzymany (11 ważnych).
+
+- `wouldBe=published`: **5/11**
+- `wouldBe=draft`: **6/11**
+- `repair_attempts`: **8**, `repair_success`: **2**, `repair_failed`: **6**
+- `verify_fetches`: 2 w jednym runie; reszta 0; brak `search_error`.
+
+Drafty: guard nowych encji złapał m.in. „agtech”, „zmagaj”, „jednocześnie”, „trudny środek”; po złagodzeniu guardu zostały realne `uncertain` (Hatch Blue/SBA, Wielkie Jeziora) i jeden `refuted` (70–80% importu). Guard: pojedyncze nazwy własne nie blokują repair (R3 je weryfikuje); nadal blokują liczby (także w cytatach), akronimy i nazwy wielowyrazowe. `INITIAL_STOPWORDS`/`COMMON_TITLE_WORDS` rozszerzone. Próbka jest mała — nie dostrajać dalej bez kolejnych 10+ runów.

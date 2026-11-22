@@ -8,7 +8,7 @@ import {
 import type { EditorFeedback, EditorOut, R1Decision, R2Atom, RepairIssue, ResearchFact } from "../prompts.js";
 import { verifyExternalAtoms } from "./factcheck.js";
 import type { FactcheckOutcome, VerifyReason, VerifyStats } from "./factcheck.js";
-import { extractClaimEntities, isAcronym, significantWords, stem } from "./search/query.js";
+import { extractClaimEntities, isAcronym, isStoplistedWord, significantWords, stem } from "./search/query.js";
 import { DEFAULT_EDITOR_MODEL, createGenerator, formatLlmError } from "./llm.js";
 import type { GenerateFn } from "./llm.js";
 import { parseSynthesisJson } from "./ingestion.js";
@@ -323,41 +323,55 @@ const COMMON_TITLE_WORDS = new Set([
   "koszty",
   "zysk",
   "rolnicy",
+  "wsparcie",
+  "wsparcie instytucjonalne",
+  "równolegle",
+  "trudny",
+  "środek",
 ]);
 
 function entityKeys(text: string): string[] {
   const entities = extractClaimEntities(text, { includeSentenceStart: true });
-  return [...entities.quoted, ...entities.numeric, ...entities.proper]
+  return [
+    ...entities.quoted,
+    ...entities.quoted.flatMap((quote) => quote.split(/\s+/)),
+    ...guardNumericKeys(text),
+    ...entities.proper,
+  ]
     .map((entity) => normalizeText(entity))
     .filter((entity) => entity.length > 0 && !COMMON_TITLE_WORDS.has(entity));
 }
 
 /**
- * Encje do guardu repair: pojedynczy wyraz na początku zdania (np. „Kolejny”) nie jest
- * traktowany jako nowa nazwa własna — R3 i tak zweryfikuje treść. Nazwy wielowyrazowe,
- * akronimy i liczby nadal blokują.
+ * Encje do guardu repair: pojedyncze wyrazy (np. „Kolejny”, „Kanada”) nie są tu traktowane
+ * jako nowe nazwy — R3 i tak weryfikuje treść. Twardo blokują liczby, akronimy i nazwy
+ * wielowyrazowe, bo te najczęściej oznaczają nowy fakt.
  */
 function guardEntityKeys(text: string): string[] {
-  const entities = extractClaimEntities(text, { includeSentenceStart: true });
-  const proper = new Set(entities.proper.map((entity) => entity.toLowerCase()));
-  const keys = [...entities.quoted, ...entities.numeric].map((entity) => normalizeText(entity));
+  const keys = guardNumericKeys(text);
 
   for (const match of text.matchAll(/\b[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/gu)) {
     const value = match[0];
-    if (!proper.has(value.toLowerCase()) || COMMON_TITLE_WORDS.has(normalizeText(value))) continue;
+    if (isStoplistedWord(value) || COMMON_TITLE_WORDS.has(normalizeText(value))) continue;
 
     const before = text.slice(0, match.index ?? 0);
-    const sentenceStart = (match.index ?? 0) === 0 || /[.!?]\s*$|\n\s*$/.test(before);
-    if (sentenceStart && !isAcronym(value)) {
-      const after = text.slice((match.index ?? 0) + value.length);
-      const multiword = /^\s+[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/u.test(after);
-      if (!multiword) continue;
-    }
+    const after = text.slice((match.index ?? 0) + value.length);
+    const multiword =
+      /^[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}\b/u.test(after) ||
+      /[A-ZĄĆĘŁŃÓŚŹŻ][\p{L}\p{N}-]{2,}[ \t]+$/u.test(before);
+    if (!isAcronym(value) && !multiword) continue;
 
     keys.push(normalizeText(value));
   }
 
-  return keys.filter(Boolean);
+  return [...new Set(keys.filter(Boolean))];
+}
+
+/** Liczby/lata także w cytatach — cytat nie może przemycić nowego faktu liczbowego. */
+function guardNumericKeys(text: string): string[] {
+  return (
+    text.match(/\b(?:19|20)\d{2}\b|\b\d+(?:[.,]\d+)?\s?(?:%|mln|mld|USD|EUR|ha|tys\.?)?/gi) ?? []
+  ).map((value) => normalizeText(value));
 }
 
 function newEntities(repairedText: string, allowedTexts: string[]): string[] {
