@@ -159,8 +159,67 @@ export function sourceHost(value: string): string {
   }
 }
 
+export const DEFAULT_MEDIA_BASE_URL = "https://media.kombain.pl";
+
+const KNOWN_CATEGORY_SLUGS = new Set([
+  "ai-i-automatyzacja",
+  "rolnictwo-precyzyjne",
+  "inteligentne-maszyny-i-drony",
+  "biotechnologia-i-nauka",
+  "agroenergetyka",
+  "biznes-agtech-i-prawo",
+]);
+
+export interface ResolvedArticleImage {
+  src: string;
+  isFallback: boolean;
+}
+
 export function articleImage(article: Article): string | null {
   return typeof article.image_url === "string" && article.image_url.length > 0 ? article.image_url : null;
+}
+
+/** URL domyślnej grafiki kategorii na R2 (defaults/{slug}.webp) dla 6 znanych działów. */
+export function categoryDefaultImage(categorySlug: string | null | undefined): string | null {
+  if (!categorySlug) return null;
+  const normalized = categorySlug.trim().toLowerCase();
+  if (!KNOWN_CATEGORY_SLUGS.has(normalized)) return null;
+  return `${DEFAULT_MEDIA_BASE_URL}/defaults/${normalized}.webp`;
+}
+
+/** Rozwiązuje okładkę artykułu: walidowany URL z artykułu lub fallback na default kategorii. */
+export function resolveArticleImage(
+  article: Pick<Article, "image_url">,
+  categorySlug?: string | null
+): ResolvedArticleImage | null {
+  if (typeof article.image_url === "string" && article.image_url.trim().length > 0) {
+    const safeUrl = safeSourceUrl(article.image_url.trim());
+    if (safeUrl) return { src: safeUrl, isFallback: false };
+  }
+  const fallback = categoryDefaultImage(categorySlug);
+  return fallback ? { src: fallback, isFallback: true } : null;
+}
+
+/** Opis SEO artykułu wyłącznie z istniejących danych (TL;DR → zajawka → tytuł). */
+export function articleMetaDescription(
+  article: Pick<Article, "title" | "text_content">,
+  tldr: string[]
+): string {
+  const firstPoint = tldr[0]?.trim();
+  if (firstPoint) return firstPoint;
+  const summary = excerpt(article.text_content, 160);
+  if (summary) return summary;
+  return article.title;
+}
+
+/** Poprawna polska odmiana słowa „materiał” dla liczników na listingach. */
+export function pluralizeMaterials(count: number): string {
+  const abs = Math.abs(count);
+  const mod100 = abs % 100;
+  const mod10 = abs % 10;
+  if (abs === 1) return "materiał";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "materiały";
+  return "materiałów";
 }
 
 /** Zajawka z HTML redaktora; bez tagów, encje basic, cięcie na granicy słowa. */

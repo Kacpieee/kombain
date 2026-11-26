@@ -1,28 +1,38 @@
 ---
 import type { Article, ArticleWithCategory } from "../lib/directus";
-import { articleImage, excerpt, formatDate, publishedDate } from "../lib/directus";
+import { excerpt, formatDate, publishedDate, resolveArticleImage } from "../lib/directus";
 
 interface Props {
   article: Article | ArticleWithCategory;
   categoryName?: string;
   categorySlug?: string;
+  priority?: boolean;
 }
 
-const { article, categoryName, categorySlug } = Astro.props;
-const image = articleImage(article);
-const date = formatDate(publishedDate(article));
+const { article, categoryName, categorySlug, priority = false } = Astro.props;
+const image = resolveArticleImage(article, categorySlug);
+const publishedIso = publishedDate(article);
+const date = formatDate(publishedIso);
 const summary = excerpt(article.text_content, 145);
 ---
 <article class="card">
-  <a class="card-media" href={`/artykul/${article.slug}`} tabindex="-1" aria-hidden="true">
+  <div class="card-media">
     {
       image ? (
-        <img src={image} alt="" width="1200" height="675" loading="lazy" decoding="async" />
+        <img
+          src={image.src}
+          alt={article.title}
+          width="1200"
+          height="675"
+          loading={priority ? "eager" : "lazy"}
+          fetchpriority={priority ? "high" : undefined}
+          decoding="async"
+        />
       ) : (
-        <span class="card-placeholder">🌱</span>
+        <div class="card-placeholder" aria-hidden="true">kombain.pl</div>
       )
     }
-  </a>
+  </div>
   <div class="card-body">
     {
       categoryName && categorySlug && (
@@ -31,8 +41,10 @@ const summary = excerpt(article.text_content, 145);
         </a>
       )
     }
-    <h3><a href={`/artykul/${article.slug}`}>{article.title}</a></h3>
+    <h3 class="card-title">
+      <a href={`/artykul/${article.slug}`}>{article.title}</a>
+    </h3>
     {summary && <p class="card-excerpt">{summary}</p>}
-    {date && <time class="card-date" datetime={publishedDate(article) ?? undefined}>{date}</time>}
+    {date && <time class="card-date" datetime={publishedIso ?? undefined}>{date}</time>}
   </div>
 </article>

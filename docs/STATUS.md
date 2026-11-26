@@ -23,6 +23,7 @@
 - Hotfix po A/B: repair guard nie blokuje pojedynczych nazw własnych/openerów (liczby, akronimy i nazwy wielowyrazowe nadal blokują); 11 ważnych dry-runów AgFunder: 5 published / 6 draft, repair 8/2/6; 356 unit + 33 PG
 - OPS: `deploy/scripts/release-worker.sh` — jednokomendowy transfer + build + check-env + upload defaultów (bez sekretów w repo); brak SSH z dev-harness, skrypt do uruchomienia przez użytkownika
 - F3-T3a: `package-lock.json` w roocie monorepo (deterministyczny build Cloudflare Pages, zweryfikowane czystym `npm ci`, Astro 4.16.19 bez zmiany zależności) + 3 pozycje WEB w `plans.md` (`KIEDYŚ`: Astro 5, paginacja, dark mode)
+- F3-T3b: `apps/web` responsywny szkielet mobile-first (320–2560 px), `tokens.css`/`global.css` (`--color-*`, `color-scheme: light`, `clamp()`, kontrast ≥4.5:1, `:focus-visible`, `prefers-reduced-motion`), `SiteHeader` (menu mobilne z `aria-expanded` + `Escape`, tap targety ≥44 px), fallback okładek `defaults/{slug}.webp` + `fetchpriority="high"`, TL;DR nad treścią, `TechSummary` tabela/karty, SEO (OG + Twitter Cards + `noindex` 404), `.env.example` bez wartości; 360 unit + 28/28 viewport audit (mock Directus, live `cms.kombain.pl` odroczone do `.env`)
 
 ## W trakcie
 - (pusto)

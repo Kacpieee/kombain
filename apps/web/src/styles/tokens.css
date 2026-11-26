@@ -1,0 +1,67 @@
+/*
+ * kombain.pl — Design tokens (jeden jasny motyw, kontrast >= 4.5:1)
+ *
+ * Scentralizowane progi responsywności (mobile-first, używane wyłącznie w global.css):
+ * - Mobile (domyślnie):  0 – 599px   (testowane: 320, 360, 390, 430px)
+ * - Tablet SM:           37.5rem     (600px  — 2 kolumny kart, tabela TechSummary)
+ * - Tablet MD:           48rem       (768px  — szersze marginesy i układ sekcji)
+ * - Desktop LG:          64rem       (1024px — pozioma nawigacja, 3 kolumny kart)
+ * - Desktop XL:          80rem       (1280px — docelowe proporcje desktopu, limit max-width dla 2560px)
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Kolory — powierzchnie i obramowania */
+  --color-bg: #f6f3ec;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #eef5f0;
+  --color-border: #ddd5c3;
+  --color-border-strong: #c5baa2;
+
+  /* Kolory — typografia (każda para >= 4.5:1 na jasnym tle) */
+  --color-ink: #18221d;
+  --color-muted: #4a5951;
+
+  /* Kolory — marka i akcenty */
+  --color-brand-900: #143d27;
+  --color-brand-700: #1b5435;
+  --color-brand-hover: #103521;
+  --color-brand-500: #2f8a55;
+  --color-brand-100: #e6f2ea;
+
+  /* Kolory — powierzchnie ciemne (header/footer #143d27) */
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #d8ebdf;
+  --color-on-dark-accent: #a7dfc0;
+  --color-on-dark-border: rgb(255 255 255 / 18%);
+
+  /* Kolory — focus ring (wysoki kontrast >= 8:1 na obu tłach) */
+  --color-focus: #0f4c81;
+  --color-focus-on-dark: #ffd166;
+
+  /* Typografia płynna (bazowe body >= 16px na mobile) */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --text-xs: 0.8125rem;
+  --text-sm: clamp(0.875rem, 0.85rem + 0.12vw, 0.9375rem);
+  --text-base: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem);
+  --text-lead: clamp(1.03rem, 0.98rem + 0.35vw, 1.1875rem);
+  --text-h3: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  --text-h2: clamp(1.25rem, 1.1rem + 0.7vw, 1.625rem);
+  --text-h1-article: clamp(1.625rem, 1.15rem + 2.2vw, 2.625rem);
+  --text-h1-hero: clamp(1.875rem, 1.25rem + 3vw, 3.25rem);
+
+  /* Układ i proporcje */
+  --shell-max: 75rem;
+  --shell-gutter: clamp(1rem, 3.5vw, 2rem);
+  --editorial-max: 52rem;
+  --measure: 68ch;
+  --tap-min: 2.75rem; /* 44px */
+
+  /* Kształt i głębia */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.875rem;
+  --radius-pill: 999px;
+  --shadow-card: 0 8px 24px rgb(20 61 39 / 8%);
+  --transition-fast: 180ms ease;
+}

@@ -1,18 +1,19 @@
 ---
-import TldrBox from "../../components/TldrBox.astro";
 import TechSummaryBox from "../../components/TechSummaryBox.astro";
+import TldrBox from "../../components/TldrBox.astro";
 import MainLayout from "../../layouts/MainLayout.astro";
 import {
+  NO_STORE_CACHE_CONTROL,
   applyCacheHeaders,
-  articleImage,
+  articleMetaDescription,
   categoryById,
   fetchArticleBySlug,
   fetchCategories,
   formatDate,
   normalizeTechSummary,
   normalizeTldr,
-  NO_STORE_CACHE_CONTROL,
   publishedDate,
+  resolveArticleImage,
   resolveConfig,
   safeSourceUrl,
   sourceHost,
@@ -31,66 +32,88 @@ const [categories, article] = await Promise.all([
 ]);
 
 const category = article ? categoryById(categories, article.category_id) : null;
-const image = article ? articleImage(article) : null;
+const image = article ? resolveArticleImage(article, category?.slug) : null;
 const sourceUrl = article ? safeSourceUrl(article.source_url) : null;
 const tldr = article ? normalizeTldr(article.tldr) : [];
 const techSummary = article ? normalizeTechSummary(article.tech_summary) : null;
-const date = article ? formatDate(publishedDate(article)) : "";
-const description = tldr[0] ?? (article ? article.title : "Nie znaleziono artykułu");
+const publishedIso = article ? publishedDate(article) : null;
+const date = formatDate(publishedIso);
+const description = article ? articleMetaDescription(article, tldr) : "Nie znaleziono artykułu";
+const hasSummary = tldr.length > 0 || techSummary !== null;
 
 if (article) applyCacheHeaders(Astro.response.headers);
 else applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
 
 if (!article) Astro.response.status = 404;
 ---
-<MainLayout title={article ? article.title : "Nie znaleziono artykułu"} description={description} categories={categories} activeCategory={category?.slug}>
+<MainLayout
+  title={article ? article.title : "Nie znaleziono artykułu"}
+  description={description}
+  categories={categories}
+  activeCategory={category?.slug}
+  ogType={article ? "article" : "website"}
+  ogImage={image?.src ?? null}
+  publishedTime={publishedIso}
+  noindex={!article}
+>
   {
     article ? (
-      <>
-        <header class="shell article-header">
-          {category && (
-            <a class="card-category" href={`/kategoria/${category.slug}`}>
-              {category.name}
-            </a>
-          )}
-          <h1>{article.title}</h1>
-          <div class="article-meta">
-            {date && <time datetime={publishedDate(article) ?? undefined}>{date}</time>}
-            <span>Zweryfikowano względem źródeł</span>
-          </div>
-        </header>
+      <article class="shell article-shell">
+        <div class="article-container">
+          <header class="article-header">
+            {category && (
+              <a class="article-category-link" href={`/kategoria/${category.slug}`}>
+                {category.name}
+              </a>
+            )}
+            <h1>{article.title}</h1>
+            <div class="article-meta">
+              {date && <time datetime={publishedIso ?? undefined}>{date}</time>}
+              <span>Zweryfikowano względem źródeł</span>
+            </div>
+          </header>
 
-        <div class="shell">
           {image && (
             <figure class="article-hero">
-              <img src={image} alt="" width="1200" height="675" loading="eager" decoding="async" />
+              <img
+                src={image.src}
+                alt={article.title}
+                width="1200"
+                height="675"
+                loading="eager"
+                fetchpriority="high"
+                decoding="async"
+              />
             </figure>
           )}
 
-          <div class="article-layout">
-            <article class="article-body" set:html={article.text_content ?? "<p>Brak treści.</p>"} />
-
-            <aside class="sidebar">
+          {hasSummary && (
+            <aside class="article-summary" aria-label="Podsumowanie artykułu">
               <TldrBox items={tldr} />
               <TechSummaryBox summary={techSummary} />
             </aside>
-          </div>
+          )}
+
+          <div class="article-body" set:html={article.text_content ?? "<p>Brak treści.</p>"} />
 
           {sourceUrl && (
-            <p class="source-line">
-              Źródło:{" "}
-              <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow">
-                {sourceHost(sourceUrl)}
-              </a>
-            </p>
+            <footer class="article-footer">
+              <p class="source-line">
+                <span>Źródło:</span>
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                  {sourceHost(sourceUrl)}
+                </a>
+              </p>
+            </footer>
           )}
         </div>
-      </>
+      </article>
     ) : (
       <section class="shell not-found">
         <p class="eyebrow">404</p>
         <h1>Nie ma takiego artykułu</h1>
-        <p><a href="/">Wróć na stronę główną</a></p>
+        <p>Link mógł się zmienić lub materiał nie jest już opublikowany.</p>
+        <p><a class="action-link" href="/">Wróć na stronę główną</a></p>
       </section>
     )
   }
