@@ -22,6 +22,7 @@
 - F3-T2: R2/defaulty/webhook — 6 webp 1200×675 w `apps/worker/assets/defaults`, skrypt `upload-defaults.ts` (walidacja sharp + `defaults/*.webp` na R2), `uploadToR2` współdzielony z media, runbook §15 (`media.kombain.pl`, Directus → Pages deploy hook, purge cache); 349 unit + 33 PG
 - Hotfix po A/B: repair guard nie blokuje pojedynczych nazw własnych/openerów (liczby, akronimy i nazwy wielowyrazowe nadal blokują); 11 ważnych dry-runów AgFunder: 5 published / 6 draft, repair 8/2/6; 356 unit + 33 PG
 - OPS: `deploy/scripts/release-worker.sh` — jednokomendowy transfer + build + check-env + upload defaultów (bez sekretów w repo); brak SSH z dev-harness, skrypt do uruchomienia przez użytkownika
+- F3-T3a: `package-lock.json` w roocie monorepo (deterministyczny build Cloudflare Pages, zweryfikowane czystym `npm ci`, Astro 4.16.19 bez zmiany zależności) + 3 pozycje WEB w `plans.md` (`KIEDYŚ`: Astro 5, paginacja, dark mode)
 
 ## W trakcie
 - (pusto)

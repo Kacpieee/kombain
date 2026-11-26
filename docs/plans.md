@@ -15,3 +15,6 @@ Nowy pomysł bez werdyktu → dopytaj TERAZ-vs-KIEDYŚ, nie dopisuj w ciemno.
 - [ ] OPT: metryki R3 — `fetch_attempts/fetch_fail` — [SAFE]
 - [ ] OPT: indeks `article_tags(tag_id)` (przyszłe „artykuły po tagu”) — [CRITICAL]
 - [ ] OPT: czyszczenie wygasłych `article_failures` (>30 dni) — [SAFE]
+- [ ] WEB: upgrade Astro 4 → Astro 5 + `@astrojs/cloudflare` (uzasadnienie: Astro 4 EOL; wymaga pre-mortem i testu regresji SSR/adaptera) — [CRITICAL]
+- [ ] WEB: paginacja SSR listingu `/` i `/kategoria/[slug]` — uruchomić, gdy `published > limit` (24/30); wymaga decyzji o cache, canonical i `rel=prev/next` — [SAFE]
+- [ ] WEB: dark mode (`prefers-color-scheme: dark`, podmiana tokenów `--color-*` razem z decyzją o marce) — [SAFE]
