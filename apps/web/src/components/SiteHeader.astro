@@ -1,0 +1,245 @@
+---
+import type { Category } from "../lib/directus";
+
+interface Props {
+  categories: Category[];
+  activeCategory?: string;
+  currentPath: string;
+}
+
+const { categories, activeCategory, currentPath } = Astro.props;
+
+const bySlug = new Map(categories.map((cat) => [cat.slug, cat]));
+
+const GROUP_DEFS: { id: string; label: string; slugs: string[] }[] = [
+  { id: "technologie", label: "Technologie", slugs: ["ai-i-automatyzacja", "rolnictwo-precyzyjne"] },
+  { id: "maszyny-energia", label: "Maszyny i Energia", slugs: ["inteligentne-maszyny-i-drony", "agroenergetyka"] },
+];
+
+const groupedSlugs = new Set(GROUP_DEFS.flatMap((g) => g.slugs));
+
+const groups = GROUP_DEFS.map((g) => ({
+  id: g.id,
+  label: g.label,
+  items: g.slugs.map((slug) => bySlug.get(slug)).filter((cat): cat is Category => Boolean(cat)),
+})).filter((g) => g.items.length > 0);
+
+const standaloneCategories = categories.filter((cat) => !groupedSlugs.has(cat.slug));
+const hasNavItems = groups.length > 0 || standaloneCategories.length > 0;
+
+function isCurrentPath(href: string): boolean {
+  return currentPath === href || currentPath === `${href}/`;
+}
+---
+<header class="site-header" data-site-header>
+  <div class="shell header-inner">
+    <a
+      class="brand"
+      href="/"
+      aria-label="kombAIn.pl — strona główna"
+      aria-current={currentPath === "/" ? "page" : undefined}
+    >
+      <img
+        class="brand-logo"
+        src="/images/kombain-logo.png"
+        alt="kombAIn.pl"
+        width="1000"
+        height="312"
+        decoding="async"
+      />
+    </a>
+
+    {
+      hasNavItems && (
+        <>
+          <button
+            type="button"
+            class="nav-toggle"
+            aria-expanded="false"
+            aria-controls="primary-nav"
+            data-nav-toggle
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+            <span>Menu</span>
+          </button>
+
+          <nav id="primary-nav" class="site-nav" aria-label="Kategorie" data-site-nav hidden>
+            <ul class="nav-list">
+              {
+                groups.map((group) => {
+                  const hasActiveChild = group.items.some(
+                    (item) => isCurrentPath(`/kategoria/${item.slug}`) || item.slug === activeCategory
+                  );
+                  const submenuId = `submenu-${group.id}`;
+                  return (
+                    <li class="nav-item" data-dropdown-item>
+                      <button
+                        type="button"
+                        class:list={["nav-dropdown-trigger", { "is-section": hasActiveChild }]}
+                        aria-expanded="false"
+                        aria-controls={submenuId}
+                        data-dropdown-trigger
+                      >
+                        <span>{group.label}</span>
+                        <svg
+                          class="nav-chevron"
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </button>
+                      <ul id={submenuId} class="nav-submenu" data-dropdown-menu hidden>
+                        {group.items.map((cat) => {
+                          const href = `/kategoria/${cat.slug}`;
+                          const current = isCurrentPath(href);
+                          const section = !current && cat.slug === activeCategory;
+                          return (
+                            <li>
+                              <a
+                                href={href}
+                                aria-current={current ? "page" : undefined}
+                                class:list={{ "is-section": section }}
+                              >
+                                {cat.name}
+                              </a>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  );
+                })
+              }
+
+              {
+                standaloneCategories.map((cat) => {
+                  const href = `/kategoria/${cat.slug}`;
+                  const current = isCurrentPath(href);
+                  const section = !current && cat.slug === activeCategory;
+                  return (
+                    <li class="nav-item">
+                      <a
+                        href={href}
+                        aria-current={current ? "page" : undefined}
+                        class:list={["nav-link", { "is-section": section }]}
+                      >
+                        {cat.name}
+                      </a>
+                    </li>
+                  );
+                })
+              }
+            </ul>
+          </nav>
+        </>
+      )
+    }
+  </div>
+</header>
+
+<script>
+  const header = document.querySelector<HTMLElement>("[data-site-header]");
+  const navToggle = header?.querySelector<HTMLButtonElement>("[data-nav-toggle]");
+  const nav = header?.querySelector<HTMLElement>("[data-site-nav]");
+
+  if (header && navToggle && nav) {
+    const desktopQuery = window.matchMedia("(min-width: 64rem)");
+    const hoverQuery = window.matchMedia("(hover: hover)");
+    const dropdownItems = Array.from(header.querySelectorAll<HTMLElement>("[data-dropdown-item]"));
+
+    const setDropdown = (item: HTMLElement, open: boolean, viaHover = false) => {
+      const trigger = item.querySelector<HTMLButtonElement>("[data-dropdown-trigger]");
+      const menu = item.querySelector<HTMLElement>("[data-dropdown-menu]");
+      if (!trigger || !menu) return;
+      trigger.setAttribute("aria-expanded", String(open));
+      menu.hidden = !open;
+      item.dataset.hoverPreview = open && viaHover ? "true" : "false";
+    };
+
+    const closeAllDropdowns = (except?: HTMLElement) => {
+      for (const item of dropdownItems) {
+        if (item !== except) setDropdown(item, false);
+      }
+    };
+
+    const setMobileExpanded = (expanded: boolean) => {
+      navToggle.setAttribute("aria-expanded", String(expanded));
+      nav.hidden = !desktopQuery.matches && !expanded;
+      if (!expanded) closeAllDropdowns();
+    };
+
+    setMobileExpanded(false);
+    closeAllDropdowns();
+
+    navToggle.addEventListener("click", () => {
+      const next = navToggle.getAttribute("aria-expanded") !== "true";
+      setMobileExpanded(next);
+    });
+
+    for (const item of dropdownItems) {
+      const trigger = item.querySelector<HTMLButtonElement>("[data-dropdown-trigger]");
+      if (!trigger) continue;
+
+      trigger.addEventListener("click", () => {
+        const isOpen = trigger.getAttribute("aria-expanded") === "true";
+        const wasHover = item.dataset.hoverPreview === "true";
+        if (isOpen && wasHover) {
+          setDropdown(item, true, false);
+          return;
+        }
+        closeAllDropdowns(item);
+        setDropdown(item, !isOpen, false);
+      });
+
+      item.addEventListener("pointerenter", (event) => {
+        if (!desktopQuery.matches || !hoverQuery.matches || event.pointerType === "touch") return;
+        if (trigger.getAttribute("aria-expanded") !== "true") {
+          closeAllDropdowns(item);
+          setDropdown(item, true, true);
+        }
+      });
+
+      item.addEventListener("pointerleave", (event) => {
+        if (!desktopQuery.matches || event.pointerType === "touch") return;
+        if (item.dataset.hoverPreview === "true") setDropdown(item, false);
+      });
+
+      item.addEventListener("focusout", (event) => {
+        const nextFocus = event.relatedTarget as Node | null;
+        if (nextFocus && !item.contains(nextFocus)) setDropdown(item, false);
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      if (!header.contains(event.target as Node)) closeAllDropdowns();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      for (const item of dropdownItems) {
+        const trigger = item.querySelector<HTMLButtonElement>("[data-dropdown-trigger]");
+        if (trigger?.getAttribute("aria-expanded") === "true") {
+          setDropdown(item, false);
+          trigger.focus();
+          return;
+        }
+      }
+      if (navToggle.getAttribute("aria-expanded") === "true") {
+        setMobileExpanded(false);
+        navToggle.focus();
+      }
+    });
+
+    desktopQuery.addEventListener("change", () => {
+      setMobileExpanded(false);
+    });
+  }
+</script>

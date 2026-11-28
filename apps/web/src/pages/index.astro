@@ -1,11 +1,17 @@
 ---
 import ArticleCard from "../components/ArticleCard.astro";
+import CategoryTiles from "../components/CategoryTiles.astro";
 import MainLayout from "../layouts/MainLayout.astro";
 import {
   applyCacheHeaders,
+  articleMetaDescription,
   categoryById,
   fetchCategories,
   fetchPublishedArticles,
+  formatDate,
+  isDefaultCategoryImageUrl,
+  normalizeTldr,
+  resolveArticleImage,
   resolveConfig,
 } from "../lib/directus";
 
@@ -19,25 +25,90 @@ const [categories, articles] = await Promise.all([
   fetchCategories(config),
   fetchPublishedArticles(config, { limit: 24 }),
 ]);
+
 const cards = articles.map((article) => ({ article, category: categoryById(categories, article.category_id) }));
+const featured = cards[0] ?? null;
+const featuredTldr = featured ? normalizeTldr(featured.article.tldr) : [];
+const featuredSubtitle = featured ? articleMetaDescription(featured.article, featuredTldr) : null;
+const featuredImage = featured ? resolveArticleImage(featured.article, featured.category?.slug) : null;
+const featuredHeroPhoto =
+  featuredImage && !featuredImage.isFallback && !isDefaultCategoryImageUrl(featuredImage.src)
+    ? featuredImage.src
+    : null;
 const latestDate = articles[0]?.published_at ?? articles[0]?.created_at ?? null;
+const formattedLatest = formatDate(latestDate);
 
 applyCacheHeaders(Astro.response.headers);
 ---
-<MainLayout title="kombain.pl — technologia, która uprawia" categories={categories}>
-  <section class="hero shell">
-    <p class="eyebrow">AgTech bez ściemy</p>
-    <h1>Technologia, która uprawia.</h1>
-    <p>
-      Rolnictwo precyzyjne, drony, biotechnologia i agroenergetyka. Każdy fakt z linkiem do źródła,
-      każdy artykuł zweryfikowany przed publikacją.
-    </p>
+<MainLayout
+  title="KombAIn.pl — technologia, która uprawia"
+  categories={categories}
+  ogImage={featuredImage?.src ?? null}
+>
+  <section class="home-hero-band" aria-label="Wyróżniony artykuł">
+    <div class="shell">
+      <div class="featured-hero">
+        {
+          featuredHeroPhoto && featured && (
+            <img
+              class="featured-hero-img"
+              src={featuredHeroPhoto}
+              alt={featured.article.title}
+              width="1200"
+              height="675"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
+            />
+          )
+        }
+        <div class="featured-hero-content">
+          {
+            featured ? (
+              <>
+                <h1>{featured.article.title}</h1>
+                {featuredSubtitle && <p class="featured-hero-subtitle">{featuredSubtitle}</p>}
+                <a class="btn-outline-light" href={`/artykul/${featured.article.slug}`}>
+                  Przeczytaj artykuł
+                </a>
+              </>
+            ) : (
+              <>
+                <h1>Technologia, która uprawia.</h1>
+                <p class="featured-hero-subtitle">
+                  Rolnictwo precyzyjne, drony, biotechnologia i agroenergetyka. Każdy fakt z linkiem do źródła.
+                </p>
+              </>
+            )
+          }
+        </div>
+      </div>
+
+      {
+        categories.length > 0 && (
+          <div class="hero-discover-wrap">
+            <a class="btn-solid-brand" href="#dzialy">
+              <span>Odkryj tematy, które Cię zainteresują</span>
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+        )
+      }
+    </div>
   </section>
 
-  <section class="shell" aria-labelledby="latest-heading">
-    <div class="section-heading">
-      <h2 id="latest-heading">Najnowsze</h2>
-      {latestDate && <span>Aktualizacja: <time datetime={latestDate}>{new Date(latestDate).toLocaleDateString("pl-PL")}</time></span>}
+  <CategoryTiles categories={categories} articles={articles} />
+
+  <section class="posts-section shell" aria-labelledby="latest-heading">
+    <div class="posts-heading">
+      <h2 id="latest-heading">Najnowsze wpisy</h2>
+      {
+        latestDate && formattedLatest && (
+          <p class="posts-heading-meta">
+            Aktualizacja: <time datetime={latestDate}>{formattedLatest}</time>
+          </p>
+        )
+      }
     </div>
 
     {
@@ -48,27 +119,10 @@ applyCacheHeaders(Astro.response.headers);
           ))}
         </div>
       ) : (
-        <p class="muted">Brak opublikowanych artykułów. Worker dopiero rozgrzewa kombajn.</p>
+        <p class="muted empty-state">
+          Brak opublikowanych artykułów. Worker dopiero rozgrzewa kombajn.
+        </p>
       )
     }
   </section>
-
-  {
-    categories.length > 0 && (
-      <section class="shell" aria-labelledby="categories-heading" style="margin-top: 2.5rem">
-        <div class="section-heading">
-          <h2 id="categories-heading">Działy</h2>
-        </div>
-        <ul class="category-list">
-          {categories.map((category) => (
-            <li>
-              <a class="category-chip" href={`/kategoria/${category.slug}`}>
-                {category.name}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
 </MainLayout>

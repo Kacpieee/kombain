@@ -23,6 +23,7 @@
 - Hotfix po A/B: repair guard nie blokuje pojedynczych nazw własnych/openerów (liczby, akronimy i nazwy wielowyrazowe nadal blokują); 11 ważnych dry-runów AgFunder: 5 published / 6 draft, repair 8/2/6; 356 unit + 33 PG
 - OPS: `deploy/scripts/release-worker.sh` — jednokomendowy transfer + build + check-env + upload defaultów (bez sekretów w repo); brak SSH z dev-harness, skrypt do uruchomienia przez użytkownika
 - F3-T3a: `package-lock.json` w roocie monorepo (deterministyczny build Cloudflare Pages, zweryfikowane czystym `npm ci`, Astro 4.16.19 bez zmiany zależności) + 3 pozycje WEB w `plans.md` (`KIEDYŚ`: Astro 5, paginacja, dark mode)
+- F3-T3b: `apps/web` wygląd na wzór starej strony `kombAIn.pl` (paleta `#105c39`/`#257525`/`#f3f6f2`/`#f9faf9`, logo `KombAIn`, 4-pozycyjna nawigacja z dropdownami i menu mobilnym `Escape`, hero z najnowszym artykułem na 33% zielonym pasie, 6 kafelków kategorii z ikonami `-wht/-blk` + SVG DNA i inwersją hover/focus, 2-kolumnowe karty „Najnowsze wpisy” z `DOWIEDZ SIĘ WIĘCEJ →`, jasna stopka), pełna responsywność 320–2560 px, fallback okładek `defaults/{slug}.webp`, TL;DR nad treścią, `TechSummary` tabela/karty, SEO (OG/Twitter/`noindex` 404), `.env.example` bez wartości; 361 unit + 28/28 viewport audit (mock Directus, live `cms.kombain.pl` odroczone do `.env`)
 
 ## W trakcie
 - (pusto)

@@ -11,3 +11,4 @@ docs/vps-inventory.md
 deploy/.env
 deploy/worker.env
 deploy/*.local.yml
+kombain pliki/

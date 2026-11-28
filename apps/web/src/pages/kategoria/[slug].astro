@@ -2,12 +2,14 @@
 import ArticleCard from "../../components/ArticleCard.astro";
 import MainLayout from "../../layouts/MainLayout.astro";
 import {
+  NO_STORE_CACHE_CONTROL,
   applyCacheHeaders,
   categoryBySlug,
+  categoryDefaultImage,
   fetchCategories,
   fetchPublishedArticles,
+  pluralizeMaterials,
   resolveConfig,
-  NO_STORE_CACHE_CONTROL,
 } from "../../lib/directus";
 
 const slug = Astro.params.slug ?? "";
@@ -26,28 +28,45 @@ else applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
 
 if (!category) Astro.response.status = 404;
 
-const description = category?.description ?? "Kategoria na kombain.pl";
+const description = category?.description ?? "Kategoria na KombAIn.pl";
+const ogImage = category ? categoryDefaultImage(category.slug) : null;
 ---
-<MainLayout title={category ? category.name : "Nie znaleziono kategorii"} description={description} categories={categories} activeCategory={category?.slug}>
+<MainLayout
+  title={category ? category.name : "Nie znaleziono kategorii"}
+  description={description}
+  categories={categories}
+  activeCategory={category?.slug}
+  ogImage={ogImage}
+  noindex={!category}
+>
   {
     category ? (
       <>
-        <section class="hero shell">
-          <p class="eyebrow">Dział</p>
-          <h1>{category.name}</h1>
-          {category.description && <p>{category.description}</p>}
+        <section class="page-banner page-banner--centered">
+          <div class="shell">
+            <p class="eyebrow">Dział</p>
+            <h1>{category.name}</h1>
+            {category.description && <p class="page-banner-lead">{category.description}</p>}
+          </div>
         </section>
 
-        <section class="shell" aria-labelledby="category-articles">
+        <section class="posts-section shell" aria-labelledby="category-articles">
           <div class="section-heading">
             <h2 id="category-articles">Artykuły</h2>
-            <span>{articles.length} {articles.length === 1 ? "materiał" : "materiałów"}</span>
+            <span class="section-meta">
+              {articles.length} {pluralizeMaterials(articles.length)}
+            </span>
           </div>
 
           {articles.length > 0 ? (
             <div class="card-grid">
-              {articles.map((article) => (
-                <ArticleCard article={article} categoryName={category.name} categorySlug={category.slug} />
+              {articles.map((article, index) => (
+                <ArticleCard
+                  article={article}
+                  categoryName={category.name}
+                  categorySlug={category.slug}
+                  priority={index === 0}
+                />
               ))}
             </div>
           ) : (
@@ -56,11 +75,20 @@ const description = category?.description ?? "Kategoria na kombain.pl";
         </section>
       </>
     ) : (
-      <section class="shell not-found">
-        <p class="eyebrow">404</p>
-        <h1>Nie ma takiego działu</h1>
-        <p><a href="/">Wróć na stronę główną</a></p>
-      </section>
+      <>
+        <section class="page-banner page-banner--centered">
+          <div class="shell">
+            <p class="eyebrow">404</p>
+            <h1>Nie ma takiego działu</h1>
+          </div>
+        </section>
+        <section class="not-found-wrap shell">
+          <div class="not-found-card">
+            <p>Sprawdź adres lub wybierz jeden z działów w nawigacji.</p>
+            <a class="btn-solid-brand" href="/">Wróć na stronę główną</a>
+          </div>
+        </section>
+      </>
     )
   }
 </MainLayout>

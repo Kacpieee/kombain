@@ -1,0 +1,70 @@
+/*
+ * kombAIn.pl — Design tokens (wierne palecie starej strony z kombain-old.html, jeden jasny motyw)
+ * Kontrast każdej pary tekst/tło >= 4.5:1 (WCAG AA).
+ *
+ * Scentralizowane progi responsywności (mobile-first, używane wyłącznie w global.css):
+ * - Mobile (domyślnie):  0 – 599px   (testowane: 320, 360, 390, 430px)
+ * - Tablet SM:           37.5rem     (600px  — 2 kolumny kart i kafelków, tabela TechSummary)
+ * - Tablet MD:           48rem       (768px  — szersze marginesy i hero)
+ * - Desktop LG:          64rem       (1024px — pozioma nawigacja 4-pozycyjna z dropdownami, 3×2 kafelki kategorii)
+ * - Desktop XL:          80rem       (1280px — docelowe proporcje, max-width 1290px bez full-width na 2560px)
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Paleta bazowa KombAIn.pl (Kadence palette1–palette9 z korektą kontrastu muted >= 4.5:1) */
+  --color-brand-primary: #105c39;   /* palette1 — header, hero split, CTA, nagłówek sekcji */
+  --color-brand-hover: #257525;     /* palette2 — hover przycisków i linków (kontrast 5.6:1) */
+  --color-brand-deep: #0b4228;      /* ciemniejszy stan aktywny */
+  --color-ink-strong: #111111;      /* palette3 — nagłówki h1/h2/h3, hover kafelka kategorii */
+  --color-ink: #333333;             /* palette4 — tekst artykułów (kontrast 12.6:1 na białym) */
+  --color-ink-secondary: #4f4f4f;   /* palette5 — stopka, etykiety pomocnicze (8.1:1) */
+  --color-muted: #596359;           /* skorygowane z #707970 dla WCAG AA (6.1:1 na #fff, 5.4:1 na #f3f6f2) */
+  --color-surface-section: #f3f6f2; /* palette7 — szałwiowy pas kategorii i nagłówków podstron */
+  --color-bg: #f9faf9;              /* palette8 — tło strony */
+  --color-surface: #ffffff;         /* palette9 — białe karty, stopka, kontenery */
+  --color-border: #e1e8e0;
+  --color-border-strong: #c5d1c4;
+
+  /* Powierzchnie ciemne (header #105c39, nakładki hero i kafelków) */
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #e6f2ec;
+  --color-on-dark-accent: #b7e4c7;
+  --color-on-dark-border: rgb(255 255 255 / 22%);
+  --color-hero-overlay: rgb(17 17 17 / 68%);
+  --color-hero-overlay-hover: rgb(5 31 20 / 86%);
+  --color-tile-overlay: rgb(17 17 17 / 60%);
+  --color-tile-overlay-hover: rgb(255 255 255 / 84%);
+
+  /* Focus ring (wysoki kontrast >= 8:1 na jasnym i ciemnym tle) */
+  --color-focus: #0f4c81;
+  --color-focus-on-dark: #ffd166;
+
+  /* Typografia płynna (bez fontów z CDN; bazowe body >= 16px na mobile) */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --text-xs: 0.8125rem;
+  --text-sm: clamp(0.875rem, 0.85rem + 0.12vw, 0.9375rem);
+  --text-base: clamp(1rem, 0.97rem + 0.16vw, 1.0625rem);
+  --text-lead: clamp(1.03rem, 0.98rem + 0.3vw, 1.2rem);
+  --text-h3: clamp(1.125rem, 1.04rem + 0.38vw, 1.35rem);
+  --text-h2: clamp(1.375rem, 1.18rem + 0.8vw, 1.95rem);
+  --text-h1-article: clamp(1.625rem, 1.15rem + 2.1vw, 2.5rem);
+  --text-h1-hero: clamp(1.85rem, 1.15rem + 3.2vw, 3.25rem);
+
+  /* Układ i proporcje (zgodne z Kadence 1290px / 842px) */
+  --shell-max: 80.625rem;     /* 1290px */
+  --shell-gutter: clamp(1rem, 3vw, 1.75rem);
+  --editorial-max: 52.625rem; /* 842px */
+  --measure: 68ch;
+  --tap-min: 2.75rem;         /* 44px */
+
+  /* Promienie, cienie i przejścia */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 0.9375rem; /* 15px jak na starej stronie */
+  --shadow-card: 0 15px 15px -10px rgb(0 0 0 / 6%);
+  --shadow-hero: 0 4px 18px rgb(0 0 0 / 28%);
+  --shadow-btn-hover: 0 12px 22px -8px rgb(0 0 0 / 22%);
+  --transition-fast: 200ms ease;
+}

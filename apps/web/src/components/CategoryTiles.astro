@@ -1,0 +1,119 @@
+---
+import type { Article, Category } from "../lib/directus";
+import { resolveCategoryTileImage } from "../lib/directus";
+
+interface Props {
+  categories: Category[];
+  articles: Article[];
+}
+
+const { categories, articles } = Astro.props;
+
+const PNG_ICON_SLUGS = new Set([
+  "ai-i-automatyzacja",
+  "rolnictwo-precyzyjne",
+  "inteligentne-maszyny-i-drony",
+  "agroenergetyka",
+  "biznes-agtech-i-prawo",
+]);
+
+const TILE_ORDER = [
+  "rolnictwo-precyzyjne",
+  "ai-i-automatyzacja",
+  "inteligentne-maszyny-i-drony",
+  "biotechnologia-i-nauka",
+  "agroenergetyka",
+  "biznes-agtech-i-prawo",
+];
+
+const orderedCategories = [...categories].sort((a, b) => {
+  const ai = TILE_ORDER.indexOf(a.slug);
+  const bi = TILE_ORDER.indexOf(b.slug);
+  if (ai === -1 && bi === -1) return a.name.localeCompare(b.name, "pl");
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
+});
+---
+{
+  orderedCategories.length > 0 && (
+    <div id="dzialy" class="categories-wrapper">
+      <svg class="band-chevron band-chevron--top" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true">
+        <polygon fill="currentColor" points="0,0 1200,0 600,40" />
+      </svg>
+
+      <section class="categories-band" aria-labelledby="dzialy-heading">
+        <div class="shell">
+          <h2 id="dzialy-heading" class="visually-hidden">Kategorie tematyczne</h2>
+          <div class="category-tiles-grid">
+            {orderedCategories.map((category) => {
+              const bgImage = resolveCategoryTileImage(category, articles);
+              const hasPngIcon = PNG_ICON_SLUGS.has(category.slug);
+              return (
+                <a class="category-tile" href={`/kategoria/${category.slug}`}>
+                  {bgImage && (
+                    <img
+                      class="category-tile-bg"
+                      src={bgImage}
+                      alt=""
+                      width="1200"
+                      height="675"
+                      loading="lazy"
+                      decoding="async"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span class="category-tile-icon" aria-hidden="true">
+                    {hasPngIcon ? (
+                      <>
+                        <img
+                          class="icon-wht"
+                          src={`/images/categories/${category.slug}-wht.png`}
+                          alt=""
+                          width="300"
+                          height="300"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <img
+                          class="icon-blk"
+                          src={`/images/categories/${category.slug}-blk.png`}
+                          alt=""
+                          width="300"
+                          height="300"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </>
+                    ) : (
+                      <svg
+                        class="icon-svg"
+                        viewBox="0 0 64 64"
+                        width="72"
+                        height="72"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M20 8c0 14 24 14 24 28s-24 14-24 20" />
+                        <path d="M44 8c0 14-24 14-24 28s24 14 24 20" />
+                        <path d="M23 16h18M26 24h12M26 40h12M23 48h18" />
+                      </svg>
+                    )}
+                  </span>
+                  <span class="category-tile-label">{category.name}</span>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <svg class="band-chevron band-chevron--bottom" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true">
+        <polygon fill="currentColor" points="0,0 1200,0 600,40" />
+      </svg>
+    </div>
+  )
+}
