@@ -2,14 +2,12 @@
 import ArticleCard from "../../components/ArticleCard.astro";
 import MainLayout from "../../layouts/MainLayout.astro";
 import {
-  NO_STORE_CACHE_CONTROL,
   applyCacheHeaders,
   categoryBySlug,
-  categoryDefaultImage,
   fetchCategories,
   fetchPublishedArticles,
-  pluralizeMaterials,
   resolveConfig,
+  NO_STORE_CACHE_CONTROL,
 } from "../../lib/directus";
 
 const slug = Astro.params.slug ?? "";
@@ -29,42 +27,27 @@ else applyCacheHeaders(Astro.response.headers, NO_STORE_CACHE_CONTROL);
 if (!category) Astro.response.status = 404;
 
 const description = category?.description ?? "Kategoria na kombain.pl";
-const ogImage = category ? categoryDefaultImage(category.slug) : null;
 ---
-<MainLayout
-  title={category ? category.name : "Nie znaleziono kategorii"}
-  description={description}
-  categories={categories}
-  activeCategory={category?.slug}
-  ogImage={ogImage}
-  noindex={!category}
->
+<MainLayout title={category ? category.name : "Nie znaleziono kategorii"} description={description} categories={categories} activeCategory={category?.slug}>
   {
     category ? (
       <>
         <section class="hero shell">
           <p class="eyebrow">Dział</p>
           <h1>{category.name}</h1>
-          {category.description && <p class="hero-lead">{category.description}</p>}
+          {category.description && <p>{category.description}</p>}
         </section>
 
         <section class="shell" aria-labelledby="category-articles">
           <div class="section-heading">
             <h2 id="category-articles">Artykuły</h2>
-            <span class="section-meta">
-              {articles.length} {pluralizeMaterials(articles.length)}
-            </span>
+            <span>{articles.length} {articles.length === 1 ? "materiał" : "materiałów"}</span>
           </div>
 
           {articles.length > 0 ? (
             <div class="card-grid">
-              {articles.map((article, index) => (
-                <ArticleCard
-                  article={article}
-                  categoryName={category.name}
-                  categorySlug={category.slug}
-                  priority={index === 0}
-                />
+              {articles.map((article) => (
+                <ArticleCard article={article} categoryName={category.name} categorySlug={category.slug} />
               ))}
             </div>
           ) : (
@@ -76,8 +59,7 @@ const ogImage = category ? categoryDefaultImage(category.slug) : null;
       <section class="shell not-found">
         <p class="eyebrow">404</p>
         <h1>Nie ma takiego działu</h1>
-        <p>Sprawdź adres lub wybierz jeden z działów w nawigacji.</p>
-        <p><a class="action-link" href="/">Wróć na stronę główną</a></p>
+        <p><a href="/">Wróć na stronę główną</a></p>
       </section>
     )
   }

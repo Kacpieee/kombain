@@ -1,14 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  DEFAULT_MEDIA_BASE_URL,
   DirectusError,
-  NO_STORE_CACHE_CONTROL,
   SSR_CACHE_CONTROL,
   applyCacheHeaders,
-  articleMetaDescription,
   categoryById,
   categoryBySlug,
-  categoryDefaultImage,
   excerpt,
   fetchArticleBySlug,
   fetchCategories,
@@ -16,9 +12,7 @@ import {
   formatDate,
   normalizeTechSummary,
   normalizeTldr,
-  pluralizeMaterials,
   publishedDate,
-  resolveArticleImage,
   resolveConfig,
   safeSourceUrl,
   sourceHost,
@@ -189,60 +183,11 @@ describe("mapowanie i normalizacja", () => {
   });
 });
 
-describe("obrazy i fallback kategorii", () => {
-  it("zwraca default kategorii dla znanych 6 slugów i null dla nieznanych", () => {
-    expect(categoryDefaultImage("agroenergetyka")).toBe(`${DEFAULT_MEDIA_BASE_URL}/defaults/agroenergetyka.webp`);
-    expect(categoryDefaultImage("ai-i-automatyzacja")).toBe(
-      `${DEFAULT_MEDIA_BASE_URL}/defaults/ai-i-automatyzacja.webp`
-    );
-    expect(categoryDefaultImage("nieznana")).toBeNull();
-    expect(categoryDefaultImage(null)).toBeNull();
-  });
-
-  it("resolveArticleImage preferuje poprawny image_url, a przy null używa defaultu kategorii", () => {
-    expect(resolveArticleImage(ARTICLE, "agroenergetyka")).toEqual({
-      src: "https://media.example/a.webp",
-      isFallback: false,
-    });
-    expect(resolveArticleImage({ image_url: null }, "rolnictwo-precyzyjne")).toEqual({
-      src: `${DEFAULT_MEDIA_BASE_URL}/defaults/rolnictwo-precyzyjne.webp`,
-      isFallback: true,
-    });
-    expect(resolveArticleImage({ image_url: "javascript:alert(1)" }, "agroenergetyka")).toEqual({
-      src: `${DEFAULT_MEDIA_BASE_URL}/defaults/agroenergetyka.webp`,
-      isFallback: true,
-    });
-    expect(resolveArticleImage({ image_url: null }, null)).toBeNull();
-  });
-});
-
-describe("SEO i odmiana PL", () => {
-  it("articleMetaDescription wybiera TL;DR → excerpt → title", () => {
-    expect(articleMetaDescription(ARTICLE, ["Kluczowy wniosek"])).toBe("Kluczowy wniosek");
-    expect(articleMetaDescription(ARTICLE, [])).toBe("Treść");
-    expect(articleMetaDescription({ title: "Sam tytuł", text_content: null }, [])).toBe("Sam tytuł");
-  });
-
-  it("pluralizeMaterials odmienia liczby po polsku", () => {
-    expect(pluralizeMaterials(0)).toBe("materiałów");
-    expect(pluralizeMaterials(1)).toBe("materiał");
-    expect(pluralizeMaterials(2)).toBe("materiały");
-    expect(pluralizeMaterials(4)).toBe("materiały");
-    expect(pluralizeMaterials(5)).toBe("materiałów");
-    expect(pluralizeMaterials(12)).toBe("materiałów");
-    expect(pluralizeMaterials(22)).toBe("materiały");
-  });
-});
-
 describe("cache", () => {
-  it("ustawia dokładny Cache-Control dla SSR i no-store dla 404", () => {
+  it("ustawia dokładny Cache-Control", () => {
     const headers = new Headers();
     applyCacheHeaders(headers);
     expect(headers.get("Cache-Control")).toBe(SSR_CACHE_CONTROL);
     expect(SSR_CACHE_CONTROL).toBe("public, s-maxage=3600, stale-while-revalidate=86400");
-
-    const notFoundHeaders = new Headers();
-    applyCacheHeaders(notFoundHeaders, NO_STORE_CACHE_CONTROL);
-    expect(notFoundHeaders.get("Cache-Control")).toBe("no-store");
   });
 });

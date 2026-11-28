@@ -6,7 +6,6 @@ import {
   categoryById,
   fetchCategories,
   fetchPublishedArticles,
-  formatDate,
   resolveConfig,
 } from "../lib/directus";
 
@@ -22,7 +21,6 @@ const [categories, articles] = await Promise.all([
 ]);
 const cards = articles.map((article) => ({ article, category: categoryById(categories, article.category_id) }));
 const latestDate = articles[0]?.published_at ?? articles[0]?.created_at ?? null;
-const formattedLatest = formatDate(latestDate);
 
 applyCacheHeaders(Astro.response.headers);
 ---
@@ -30,7 +28,7 @@ applyCacheHeaders(Astro.response.headers);
   <section class="hero shell">
     <p class="eyebrow">AgTech bez ściemy</p>
     <h1>Technologia, która uprawia.</h1>
-    <p class="hero-lead">
+    <p>
       Rolnictwo precyzyjne, drony, biotechnologia i agroenergetyka. Każdy fakt z linkiem do źródła,
       każdy artykuł zweryfikowany przed publikacją.
     </p>
@@ -39,25 +37,14 @@ applyCacheHeaders(Astro.response.headers);
   <section class="shell" aria-labelledby="latest-heading">
     <div class="section-heading">
       <h2 id="latest-heading">Najnowsze</h2>
-      {
-        latestDate && formattedLatest && (
-          <span class="section-meta">
-            Aktualizacja: <time datetime={latestDate}>{formattedLatest}</time>
-          </span>
-        )
-      }
+      {latestDate && <span>Aktualizacja: <time datetime={latestDate}>{new Date(latestDate).toLocaleDateString("pl-PL")}</time></span>}
     </div>
 
     {
       cards.length > 0 ? (
         <div class="card-grid">
-          {cards.map(({ article, category }, index) => (
-            <ArticleCard
-              article={article}
-              categoryName={category?.name}
-              categorySlug={category?.slug}
-              priority={index === 0}
-            />
+          {cards.map(({ article, category }) => (
+            <ArticleCard article={article} categoryName={category?.name} categorySlug={category?.slug} />
           ))}
         </div>
       ) : (
@@ -68,7 +55,7 @@ applyCacheHeaders(Astro.response.headers);
 
   {
     categories.length > 0 && (
-      <section class="shell section-block" aria-labelledby="categories-heading">
+      <section class="shell" aria-labelledby="categories-heading" style="margin-top: 2.5rem">
         <div class="section-heading">
           <h2 id="categories-heading">Działy</h2>
         </div>

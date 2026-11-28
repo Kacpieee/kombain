@@ -1,6 +1,7 @@
 archiwum/
 .env
 .env.*
+.envchmod
 !.env.example
 node_modules/
 dist/
